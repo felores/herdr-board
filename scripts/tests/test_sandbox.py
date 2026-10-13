@@ -79,8 +79,8 @@ class ArgumentHandlingTests(unittest.TestCase):
         proc = sandbox("--help")
         self.assertEqual(proc.returncode, 0, proc.stderr)
         for sub in (
-            "gates", "prepare", "selfcheck", "shell", "board", "tui",
-            "agent", "artifacts", "lock", "down", "reset", "doctor",
+            "gates", "prepare", "check", "selfcheck", "shell", "board", "tui",
+            "agent", "artifacts", "lock", "down", "reset", "prune", "doctor",
         ):
             self.assertIn(sub, proc.stdout)
 
@@ -146,6 +146,20 @@ class ArgumentHandlingTests(unittest.TestCase):
     def test_reset_rejects_unknown_scope(self) -> None:
         proc = sandbox("--dry-run", "reset", "--everything")
         self.assertEqual(proc.returncode, 2)
+
+    def test_check_requires_a_mode(self) -> None:
+        proc = sandbox("--dry-run", "check")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn("check needs a mode", proc.stderr)
+
+    def test_focused_check_runs_inside_the_sandbox(self) -> None:
+        proc = sandbox("--dry-run", "check", "rust", "blocker_answers")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("bash /repo/docker/check.sh rust blocker_answers", proc.stdout)
+
+        proc = sandbox("--dry-run", "check", "python", "test_sandbox.py")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("bash /repo/docker/check.sh python test_sandbox.py", proc.stdout)
 
     def test_missing_credentials_fail_before_container_launch(self) -> None:
         # A HOME with no provider credentials at all must fail the pre-launch
@@ -333,11 +347,23 @@ class CleanupTests(unittest.TestCase):
             for tok in args.split():
                 if tok == ";;":
                     continue
-                self.assertRegex(tok, r'^"?\$VOL_')
+                self.assertRegex(tok, r'^"?\$(?:VOL_|volume"?$)')
 
     def test_artifacts_refuses_to_write_inside_the_repository(self) -> None:
         text = WRAPPER.read_text(encoding="utf-8")
         self.assertIn("refusing to write artifacts inside the repository", text)
+
+    def test_volumes_record_sandbox_owner_and_worktree(self) -> None:
+        text = WRAPPER.read_text(encoding="utf-8")
+        self.assertIn("io.herdr-board.sandbox=1", text)
+        self.assertIn("io.herdr-board.repo-root=$REPO_ROOT", text)
+        self.assertIn("io.herdr-board.worktree-slug=$SLUG", text)
+
+    def test_prune_only_considers_labeled_orphan_volumes(self) -> None:
+        text = WRAPPER.read_text(encoding="utf-8")
+        self.assertIn("docker volume ls -q --filter label=io.herdr-board.sandbox=1", text)
+        self.assertIn('docker ps -aq --filter "volume=$volume"', text)
+        self.assertIn('[ -d "$repo_root" ]', text)
 
 
 class StaticSafetyTests(unittest.TestCase):

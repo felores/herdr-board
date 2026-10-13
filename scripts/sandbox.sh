@@ -39,6 +39,9 @@ Subcommands:
                              e2e/run-all.sh (substring match).
   prepare                    Build the image if stale, create volumes, fetch
                              dependencies (network used only here), build board
+  check <rust|python|harness|e2e|fmt|clippy> [args...]
+                             Run one focused checkpoint inside the same isolated
+                             sandbox. Use gates once on the final handoff tree.
   selfcheck                  Run the in-container isolation proof standalone
   shell                      Interactive bash against container-local Herdr
   board <args...>            Run a board CLI command in the sandbox environment
@@ -63,10 +66,13 @@ Subcommands:
   reset [--cargo|--target|--state|--artifacts|--image|--all]
                              Remove sandbox caches / image (never touches
                              anything not created by this tool)
+  prune                      Remove only labeled sandbox volumes whose recorded
+                             worktree no longer exists and no container uses
   doctor                     Diagnose the docker setup and sandbox resources
 
 Examples:
   scripts/sandbox.sh prepare
+  scripts/sandbox.sh check rust blocker_answers
   scripts/sandbox.sh gates
   scripts/sandbox.sh gates 03-sessions        # e2e iteration on one scenario
   scripts/sandbox.sh board card list --json
@@ -175,12 +181,23 @@ ensure_image() {
 }
 
 ensure_volumes() {
-  local v
+  local v kind
   for v in "$VOL_CARGO" "$VOL_TARGET" "$VOL_STATE" "$VOL_ARTIFACTS" "$VOL_TMP"; do
+    kind="${v#"$PREFIX-"}"
     if [ "$DRY_RUN" -eq 1 ]; then
-      run docker volume create "$v" >/dev/null
+      run docker volume create \
+        --label io.herdr-board.sandbox=1 \
+        --label "io.herdr-board.repo-root=$REPO_ROOT" \
+        --label "io.herdr-board.worktree-slug=$SLUG" \
+        --label "io.herdr-board.kind=$kind" \
+        "$v" >/dev/null
     elif ! docker volume inspect "$v" >/dev/null 2>&1; then
-      run docker volume create "$v" >/dev/null
+      run docker volume create \
+        --label io.herdr-board.sandbox=1 \
+        --label "io.herdr-board.repo-root=$REPO_ROOT" \
+        --label "io.herdr-board.worktree-slug=$SLUG" \
+        --label "io.herdr-board.kind=$kind" \
+        "$v" >/dev/null
     fi
   done
 }
@@ -412,6 +429,37 @@ cmd_reset() {
   info "reset $scope: done"
 }
 
+cmd_prune() {
+  docker_no_daemon_hint
+  local volume repo_root users removed=0 retained=0
+  while IFS= read -r volume; do
+    [ -n "$volume" ] || continue
+    repo_root="$(docker volume inspect "$volume" --format '{{ index .Labels "io.herdr-board.repo-root" }}' 2>/dev/null || true)"
+    if [ -z "$repo_root" ] || [ -d "$repo_root" ]; then
+      retained=$((retained + 1))
+      continue
+    fi
+    users="$(docker ps -aq --filter "volume=$volume")"
+    if [ -n "$users" ]; then
+      info "prune: retaining $volume because a container still references it"
+      retained=$((retained + 1))
+      continue
+    fi
+    run docker volume rm "$volume"
+    removed=$((removed + 1))
+  done < <(docker volume ls -q --filter label=io.herdr-board.sandbox=1)
+  info "prune: removed $removed orphan volume(s), retained $retained"
+}
+
+cmd_check() {
+  [ $# -ge 1 ] || die "check needs a mode: rust|python|harness|e2e|fmt|clippy"
+  sandbox_ready
+  local flags
+  flags="$(base_flags)"
+  # shellcheck disable=SC2086
+  run docker run --rm $flags "$IMAGE_TAG" bash /repo/docker/check.sh "$@"
+}
+
 # ---------------------------------------------------------------------------
 # Agent mode (real-provider dispatches in a dedicated network container)
 # ---------------------------------------------------------------------------
@@ -423,9 +471,19 @@ agent_base_flags() { # base isolation profile with the DEDICATED agent state vol
 
 agent_ensure_state() { # agent-state volume + reuse the offline-built board binary
   if [ "$DRY_RUN" -eq 1 ]; then
-    run docker volume create "$VOL_AGENT_STATE" >/dev/null
+    run docker volume create \
+      --label io.herdr-board.sandbox=1 \
+      --label "io.herdr-board.repo-root=$REPO_ROOT" \
+      --label "io.herdr-board.worktree-slug=$SLUG" \
+      --label io.herdr-board.kind=agent-state \
+      "$VOL_AGENT_STATE" >/dev/null
   elif ! docker volume inspect "$VOL_AGENT_STATE" >/dev/null 2>&1; then
-    run docker volume create "$VOL_AGENT_STATE" >/dev/null
+    run docker volume create \
+      --label io.herdr-board.sandbox=1 \
+      --label "io.herdr-board.repo-root=$REPO_ROOT" \
+      --label "io.herdr-board.worktree-slug=$SLUG" \
+      --label io.herdr-board.kind=agent-state \
+      "$VOL_AGENT_STATE" >/dev/null
   fi
   if [ "$DRY_RUN" -eq 0 ]; then
     docker run --rm --user 0:0 --network none -v "$VOL_AGENT_STATE":/home/board \
@@ -627,6 +685,7 @@ done
 case "$SUBCOMMAND" in
   gates) cmd_gates "$@" ;;
   prepare) cmd_prepare "$@" ;;
+  check) cmd_check "$@" ;;
   selfcheck) cmd_selfcheck "$@" ;;
   shell) cmd_shell "$@" ;;
   board) cmd_board "$@" ;;
@@ -636,6 +695,7 @@ case "$SUBCOMMAND" in
   lock) cmd_lock "$@" ;;
   down) cmd_down "$@" ;;
   reset) cmd_reset "$@" ;;
+  prune) cmd_prune "$@" ;;
   doctor) cmd_doctor "$@" ;;
   *) usage >&2; die "unknown subcommand '$SUBCOMMAND'" ;;
 esac

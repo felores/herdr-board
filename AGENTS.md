@@ -8,8 +8,9 @@ Feature PRs target the long-lived `dev` branch; `main` is production (branch mod
 
 ## Development workflow (sandbox-first)
 
-Local test and development runs use the Docker sandbox by default:
-`./scripts/sandbox.sh gates` runs every gate and the live E2E suite in an isolated,
+Local test and development runs use the Docker sandbox by default. Use
+`./scripts/sandbox.sh check <mode>` for focused review checkpoints;
+`./scripts/sandbox.sh gates` runs every gate once on the final handoff tree in an isolated,
 network-disabled, non-root container with the worktree read-only (setup, modes, and
 troubleshooting: [`docs/sandbox.md`](docs/sandbox.md)). Do **not** run `cargo test`,
 `e2e/run-all.sh`/`e2e/ci.sh`, the TUI, or real-provider agent runs directly against the host
