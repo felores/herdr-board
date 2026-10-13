@@ -227,3 +227,43 @@ pub struct Run {
     pub result_summary: Option<String>,
     pub log_path: Option<String>,
 }
+
+/// Idempotent machine evidence attached to a card. It is never prompt input.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Evidence {
+    pub id: i64,
+    pub card_id: i64,
+    pub producer: String,
+    pub dedupe_key: String,
+    pub schema: String,
+    pub payload: serde_json::Value,
+    pub payload_hash: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DecisionTarget {
+    pub machine_id: String,
+    pub herdr_session: String,
+    pub workspace_id: String,
+    pub pane_id: String,
+    pub terminal_id: String,
+    pub agent_session_identity: String,
+}
+
+/// One exact blocked-question occurrence owned by Board.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DecisionOccurrence {
+    pub decision_id: String,
+    pub board_id: i64,
+    pub card_id: i64,
+    pub run_id: i64,
+    pub question_hash: String,
+    pub target: DecisionTarget,
+    pub target_fingerprint: String,
+    pub state: String,
+    pub delivery_id: Option<String>,
+    pub answer_hash: Option<String>,
+    pub created_at: String,
+    pub delivered_at: Option<String>,
+}

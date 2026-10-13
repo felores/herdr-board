@@ -9,7 +9,10 @@ use serde::{
     Deserialize, Deserializer, Serialize, Serializer,
 };
 
-use crate::model::{Board, Card, Column, Comment, CommentHistory, CommentRecord, Project, Run};
+use crate::model::{
+    Board, Card, Column, Comment, CommentHistory, CommentRecord, DecisionOccurrence,
+    DecisionTarget, Evidence, Project, Run,
+};
 
 /// A nullable field in a partial update.
 ///
@@ -838,6 +841,51 @@ pub type CommentDeleteResult = DeletedResult;
 
 /// Audit snapshots returned by `comment.history`.
 pub type CommentHistoryResult = Vec<CommentHistory>;
+
+/// `evidence.put` params. Evidence never enters comments or run prompts.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct EvidencePutParams {
+    pub card_id: i64,
+    pub producer: String,
+    pub dedupe_key: String,
+    pub schema: String,
+    pub payload: serde_json::Value,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EvidenceGetParams {
+    pub card_id: i64,
+    pub producer: String,
+    pub dedupe_key: String,
+}
+
+pub type EvidenceResult = Evidence;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DecisionOpenParams {
+    pub board_id: i64,
+    pub card_id: i64,
+    pub run_id: i64,
+    pub question_hash: String,
+    pub target: DecisionTarget,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DecisionGetParams {
+    pub decision_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DecisionReceiptParams {
+    pub decision_id: String,
+    pub delivery_id: String,
+    pub target_fingerprint: String,
+    pub answer_hash: String,
+    pub status: String,
+    pub receipt_signature: String,
+}
+
+pub type DecisionResult = DecisionOccurrence;
 
 /// `run.done` params.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

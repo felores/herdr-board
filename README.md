@@ -2,7 +2,7 @@
 
 ![Rust](https://img.shields.io/badge/rust-edition%202021-orange.svg)
 ![herdr 0.9.0](https://img.shields.io/badge/herdr-0.9.0-8a2be2)
-![board protocol v1 · schema v15](https://img.shields.io/badge/board-protocol%20v1%20%C2%B7%20schema%20v15-blue.svg)
+![board protocol v1 · schema v16](https://img.shields.io/badge/board-protocol%20v1%20%C2%B7%20schema%20v16-blue.svg)
 ![platforms: linux, macOS](https://img.shields.io/badge/platforms-linux%2C%20macOS-informational)
 
 **Turn a kanban card into a real AI coding agent running in a visible Herdr pane.** Cards hold
@@ -140,7 +140,7 @@ prefix is `ctrl+a`, it is `Ctrl+A Shift+K`). Do not reuse `prefix+k` — it is H
 - Requires exactly **Herdr 0.9.0 (socket protocol 22)**, Git, and a Rust toolchain with `cargo`;
   Linux and macOS are supported. The daemon rejects any other Herdr version or protocol before
   workspace discovery and pane launch.
-- Board protocol **v1**, SQLite schema **v15** (`schema.sql`; upgrades via `board-core::db`).
+- Board protocol **v1**, SQLite schema **v16** (`schema.sql`; upgrades via `board-core::db`).
 - The installer copies the `board` CLI to `~/.local/bin` — make sure that directory is on your
   `PATH` (`HERDR_BOARD_CLI_INSTALL_DIR` overrides it before installing).
 - Without the harness integration the board still dispatches and accepts `board done`, but runs in
@@ -262,6 +262,8 @@ selected/current board.
 | `board column` | `list`, `create`, `show`, `edit`, `reorder`, `delete` |
 | `board harness` | `list`, `models`, `efforts`, `permissions` |
 | `board space` / `board session` | `list` |
+| `board evidence` | `put`, `get` |
+| `board decision` | `get` |
 | `board tui` · `board daemon` · `board version` · `board skill` | see below |
 
 Legacy top-level forms stay supported and re-dispatch into the nested handlers: `board comment`,

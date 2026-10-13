@@ -177,6 +177,12 @@ board card comment show COMMENT_ID [--json]
 board card comment edit COMMENT_ID BODY [--json]
 board card comment delete COMMENT_ID [--yes] [--json]
 board card comment history COMMENT_ID [--json]
+
+# Machine evidence is explicit, idempotent, and never prompt context.
+board evidence put CARD_ID --producer harness --dedupe-key KEY \
+  --schema harness-board-evidence/v1 --payload-json JSON [--json]
+board evidence get CARD_ID --producer harness --dedupe-key KEY [--json]
+board decision get DECISION_ID [--json]
 ```
 
 Add returns the compact current comment (`id`, `card_id`, `author`, `body`, `created_at`);

@@ -16,6 +16,7 @@ mod columns;
 mod comments;
 mod discovery;
 mod errors;
+mod evidence;
 mod panes;
 mod projects;
 mod runs;
@@ -107,6 +108,11 @@ routes!(d, params, {
     "comment.update" => comments::comment_update(d, from(params)?),
     "comment.delete" => comments::comment_delete(d, from(params)?),
     "comment.history" => comments::comment_history(d, from(params)?),
+    "evidence.put" => evidence::evidence_put(d, from(params)?),
+    "evidence.get" => evidence::evidence_get(d, from(params)?),
+    "decision.open" => evidence::decision_open(d, from(params)?),
+    "decision.get" => evidence::decision_get(d, from(params)?),
+    "decision.receipt" => evidence::decision_receipt(d, from(params)?),
     "run.done" => runs::run_done(d, from(params)?),
     "run.pane_exited" => runs::run_pane_exited(d, from(params)?),
     "run.cancel" => runs::run_cancel(d, from(params)?),

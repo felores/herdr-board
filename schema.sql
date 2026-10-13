@@ -1,6 +1,6 @@
 -- herdr-board SQLite schema (WAL mode; boardd is the only writer).
--- This file is the CURRENT (schema v15) shape: a fresh DB is created directly
--- from it and stamped `PRAGMA user_version = 15`. Existing databases are upgraded
+-- This file is the CURRENT (schema v16) shape: a fresh DB is created directly
+-- from it and stamped `PRAGMA user_version = 16`. Existing databases are upgraded
 -- by migrations in board-core/src/db/migrations.rs (kept in sync with this file).
 PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
@@ -178,6 +178,41 @@ CREATE TABLE runs (
 CREATE INDEX idx_cards_column   ON cards(column_id, position);
 CREATE INDEX idx_comments_card  ON comments(card_id, created_at);
 CREATE INDEX idx_runs_card      ON runs(card_id, started_at);
+
+-- Machine facts are deliberately separate from comments and run lifecycle.
+CREATE TABLE evidence (
+  id           INTEGER PRIMARY KEY,
+  card_id      INTEGER NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+  producer     TEXT NOT NULL,
+  dedupe_key   TEXT NOT NULL,
+  schema_name  TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  payload_hash TEXT NOT NULL,
+  created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(card_id, producer, dedupe_key)
+);
+
+CREATE TABLE decisions (
+  id                     TEXT PRIMARY KEY,
+  board_id               INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+  card_id                INTEGER NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+  run_id                 INTEGER NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+  question_hash          TEXT NOT NULL,
+  machine_id             TEXT NOT NULL,
+  herdr_session          TEXT NOT NULL,
+  workspace_id           TEXT NOT NULL,
+  pane_id                TEXT NOT NULL,
+  terminal_id            TEXT NOT NULL,
+  agent_session_identity TEXT NOT NULL,
+  target_fingerprint     TEXT NOT NULL,
+  state                  TEXT NOT NULL CHECK (state IN ('open','delivered','superseded')),
+  delivery_id            TEXT,
+  answer_hash            TEXT,
+  created_at             TEXT NOT NULL DEFAULT (datetime('now')),
+  delivered_at           TEXT
+);
+CREATE UNIQUE INDEX idx_decisions_one_open_per_run
+  ON decisions(run_id) WHERE state='open';
 -- A card has at most one queued/running/awaiting lifecycle at a time.
 CREATE UNIQUE INDEX idx_runs_one_open_per_card ON runs(card_id) WHERE ended_at IS NULL;
 CREATE INDEX idx_runs_queued_fifo ON runs(id) WHERE started_at IS NULL AND ended_at IS NULL;

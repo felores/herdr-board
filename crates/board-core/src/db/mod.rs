@@ -5,6 +5,8 @@
 mod boards_columns;
 mod cards_comments;
 mod constraints;
+mod evidence;
+pub use evidence::receipt_signature;
 mod migrations;
 mod projects;
 mod rows;

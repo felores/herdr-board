@@ -13,6 +13,7 @@ mod card;
 mod column;
 mod common;
 mod discovery;
+mod evidence;
 mod project;
 mod run;
 
@@ -21,6 +22,7 @@ pub(crate) use card::{CardCmd, CommentCmd};
 pub(crate) use column::ColumnCmd;
 pub(crate) use common::ConfirmArgs;
 pub(crate) use discovery::{HarnessCmd, SessionCmd, SpaceCmd};
+pub(crate) use evidence::{DecisionCmd, EvidenceCmd};
 pub(crate) use project::ProjectCmd;
 pub(crate) use run::RunCmd;
 
@@ -144,6 +146,16 @@ pub(crate) enum Cmd {
     Session {
         #[command(subcommand)]
         sub: SessionCmd,
+    },
+    /// Idempotent machine evidence attached to cards.
+    Evidence {
+        #[command(subcommand)]
+        sub: EvidenceCmd,
+    },
+    /// Durable blocked-question occurrences.
+    Decision {
+        #[command(subcommand)]
+        sub: DecisionCmd,
     },
 }
 

@@ -8,7 +8,7 @@ use crate::{Error, Result};
 const SCHEMA_SQL: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../schema.sql"));
 
 /// The latest schema version embedded in [`SCHEMA_SQL`].
-const SCHEMA_VERSION: i64 = 15;
+const SCHEMA_VERSION: i64 = 16;
 
 /// v1 → v2 migration. SQLite cannot alter a CHECK constraint or drop a column
 /// in place, so `cards` is rebuilt. Legacy `space_kind` values `cwd`/`worktree`
@@ -303,6 +303,41 @@ END;
 /// `user_version` only advances after both columns exist.
 const V15_MIGRATION_TABLES: [&str; 2] = ["projects", "boards"];
 
+const V16_MIGRATION_SQL: &str = "
+CREATE TABLE IF NOT EXISTS evidence (
+  id INTEGER PRIMARY KEY,
+  card_id INTEGER NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+  producer TEXT NOT NULL,
+  dedupe_key TEXT NOT NULL,
+  schema_name TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  payload_hash TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(card_id, producer, dedupe_key)
+);
+CREATE TABLE IF NOT EXISTS decisions (
+  id TEXT PRIMARY KEY,
+  board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+  card_id INTEGER NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+  run_id INTEGER NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+  question_hash TEXT NOT NULL,
+  machine_id TEXT NOT NULL,
+  herdr_session TEXT NOT NULL,
+  workspace_id TEXT NOT NULL,
+  pane_id TEXT NOT NULL,
+  terminal_id TEXT NOT NULL,
+  agent_session_identity TEXT NOT NULL,
+  target_fingerprint TEXT NOT NULL,
+  state TEXT NOT NULL CHECK (state IN ('open','delivered','superseded')),
+  delivery_id TEXT,
+  answer_hash TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  delivered_at TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_decisions_one_open_per_run
+  ON decisions(run_id) WHERE state='open';
+";
+
 impl Db {
     /// Apply migrations gated on `PRAGMA user_version`. Idempotent.
     ///
@@ -553,6 +588,9 @@ impl Db {
                         ))?;
                     }
                 }
+            }
+            if version < 16 {
+                self.conn.execute_batch(V16_MIGRATION_SQL)?;
             }
             self.conn
                 .pragma_update(None, "user_version", SCHEMA_VERSION)?;
