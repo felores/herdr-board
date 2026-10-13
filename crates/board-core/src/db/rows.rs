@@ -1,7 +1,10 @@
 use rusqlite::{types::Type, Error as SqliteError, Result as SqliteResult, Row};
 
 use super::conv_err;
-use crate::model::{Board, Card, Column, Comment, CommentHistory, CommentRecord, Project, Run};
+use crate::model::{
+    Board, Card, Column, Comment, CommentHistory, CommentRecord, IssueIdentity, Project, Run,
+    SourceIssue,
+};
 use crate::protocol::{
     AwaitingReason, CardLabels, CardStatus, Effort, RunOutcome, SpaceKind, Trigger,
 };
@@ -77,6 +80,19 @@ pub(super) fn row_to_card(row: &Row) -> SqliteResult<Card> {
         Some(s) => Some(AwaitingReason::parse_str(&s).ok_or_else(|| conv_err("awaiting_reason"))?),
         None => None,
     };
+    let source_issue = match row.get::<_, Option<String>>("issue_node_id")? {
+        Some(node_id) => Some(SourceIssue {
+            identity: IssueIdentity {
+                node_id,
+                repository_id: row.get("issue_repository_id")?,
+                repository: row.get("issue_repository")?,
+                number: row.get("issue_number")?,
+                url: row.get("issue_url")?,
+            },
+            observed_at: row.get("issue_observed_at")?,
+        }),
+        None => None,
+    };
     Ok(Card {
         id: row.get("id")?,
         board_id: row.get("board_id")?,
@@ -98,6 +114,7 @@ pub(super) fn row_to_card(row: &Row) -> SqliteResult<Card> {
         created_at: row.get("created_at")?,
         updated_at: row.get("updated_at")?,
         archived_at: row.get("archived_at")?,
+        source_issue,
         // Stamped daemon-side with resolved display labels at serve time.
         labels: CardLabels::default(),
     })

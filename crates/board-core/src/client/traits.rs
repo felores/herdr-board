@@ -3,21 +3,21 @@ use std::path::PathBuf;
 
 use crate::capability::HarnessCapabilities;
 
-use crate::model::{Card, Column, Comment, CommentHistory, CommentRecord};
+use crate::model::{Card, Column, Comment, CommentHistory, CommentRecord, IssueAuditEntry};
 
 use crate::protocol::{
     BoardArchiveParams, BoardCreateParams, BoardGetParams, BoardListParams, BoardListResult,
-    BoardOpenParams, BoardRenameParams, BoardSelectParams, BoardSnapshot, CardArchiveParams,
-    CardCreateParams, CardDetail, CardListParams, CardMoveParams, CardUpdateParams, CardVisibility,
-    ColumnCreateParams, ColumnDeleteParams, ColumnReorderParams, ColumnUpdateParams,
-    CommentAddParams, CommentDeleteParams, CommentGetParams, CommentHistoryParams,
-    CommentUpdateParams, DaemonStatus, DeletedResult, Event, HarnessCapabilitiesParams,
-    HarnessListResult, PaneSetTitleParams, PaneSetTitleResult, ProjectArchiveParams,
-    ProjectCreateParams, ProjectDetail, ProjectGetParams, ProjectListParams, ProjectListResult,
-    ProjectOpenParams, ProjectOpenResult, ProjectSelectParams, ProjectSelectedResult,
-    RunActionResult, RunCardParams, RunDoneParams, RunFocusParams, RunFocusResult, RunOutcome,
-    RunPaneExitedParams, SessionListResult, SpaceListParams, SpaceListResult, StopResult,
-    TemplateApplyParams, Visibility,
+    BoardOpenParams, BoardRenameParams, BoardSelectParams, BoardSnapshot, BoundCardCreateParams,
+    CardArchiveParams, CardCreateParams, CardDetail, CardIdParams, CardIssueParams, CardListParams,
+    CardMoveParams, CardUpdateParams, CardVisibility, ColumnCreateParams, ColumnDeleteParams,
+    ColumnReorderParams, ColumnUpdateParams, CommentAddParams, CommentDeleteParams,
+    CommentGetParams, CommentHistoryParams, CommentUpdateParams, DaemonStatus, DeletedResult,
+    Event, HarnessCapabilitiesParams, HarnessListResult, PaneSetTitleParams, PaneSetTitleResult,
+    ProjectArchiveParams, ProjectCreateParams, ProjectDetail, ProjectGetParams, ProjectListParams,
+    ProjectListResult, ProjectOpenParams, ProjectOpenResult, ProjectSelectParams,
+    ProjectSelectedResult, RunActionResult, RunCardParams, RunDoneParams, RunFocusParams,
+    RunFocusResult, RunOutcome, RunPaneExitedParams, SessionListResult, SpaceListParams,
+    SpaceListResult, StopResult, TemplateApplyParams, Visibility,
 };
 
 /// Blocking client to boardd. Object-safe so the TUI can hold `Box<dyn BoardClient>`.
@@ -276,6 +276,33 @@ pub trait BoardClient {
         Ok(serde_json::from_value(
             self.call("card.create", serde_json::to_value(p)?)?,
         )?)
+    }
+    fn card_create_bound(&mut self, p: &BoundCardCreateParams) -> anyhow::Result<Card> {
+        Ok(serde_json::from_value(
+            self.call("card.create_bound", serde_json::to_value(p)?)?,
+        )?)
+    }
+    fn card_issue_bind(&mut self, p: &CardIssueParams) -> anyhow::Result<Card> {
+        Ok(serde_json::from_value(
+            self.call("card.issue.bind", serde_json::to_value(p)?)?,
+        )?)
+    }
+    fn card_issue_refresh(&mut self, p: &CardIssueParams) -> anyhow::Result<Card> {
+        Ok(serde_json::from_value(
+            self.call("card.issue.refresh", serde_json::to_value(p)?)?,
+        )?)
+    }
+    fn card_issue_unlink(&mut self, id: i64) -> anyhow::Result<Card> {
+        Ok(serde_json::from_value(self.call(
+            "card.issue.unlink",
+            serde_json::to_value(CardIdParams { id })?,
+        )?)?)
+    }
+    fn card_issue_history(&mut self, id: i64) -> anyhow::Result<Vec<IssueAuditEntry>> {
+        Ok(serde_json::from_value(self.call(
+            "card.issue.history",
+            serde_json::to_value(CardIdParams { id })?,
+        )?)?)
     }
     fn card_duplicate(&mut self, id: i64) -> anyhow::Result<Card> {
         Ok(serde_json::from_value(

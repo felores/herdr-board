@@ -7,14 +7,15 @@ use crate::labels::card_labels;
 
 use crate::protocol::{
     BoardArchiveParams, BoardCreateParams, BoardGetParams, BoardListParams, BoardListResult,
-    BoardOpenParams, BoardRenameParams, BoardSelectParams, BoardSnapshot, CardArchiveParams,
-    CardCreateParams, CardDetail, CardListParams, CardMoveParams, CardUpdateParams,
-    ColumnCreateParams, ColumnDeleteParams, ColumnReorderParams, ColumnUpdateParams,
-    CommentAddParams, CommentDeleteParams, CommentGetParams, CommentHistoryParams,
-    CommentUpdateParams, DeletedResult, Event, PaneSetTitleParams, PaneSetTitleResult,
-    ProjectArchiveParams, ProjectCreateParams, ProjectGetParams, ProjectListParams,
-    ProjectOpenParams, ProjectOpenResult, ProjectSelectParams, ProjectSelectedResult,
-    RunActionResult, RunDoneParams, RunFocusParams, RunFocusResult, TemplateApplyParams, Trigger,
+    BoardOpenParams, BoardRenameParams, BoardSelectParams, BoardSnapshot, BoundCardCreateParams,
+    CardArchiveParams, CardCreateParams, CardDetail, CardIssueParams, CardListParams,
+    CardMoveParams, CardUpdateParams, ColumnCreateParams, ColumnDeleteParams, ColumnReorderParams,
+    ColumnUpdateParams, CommentAddParams, CommentDeleteParams, CommentGetParams,
+    CommentHistoryParams, CommentUpdateParams, DeletedResult, Event, PaneSetTitleParams,
+    PaneSetTitleResult, ProjectArchiveParams, ProjectCreateParams, ProjectGetParams,
+    ProjectListParams, ProjectOpenParams, ProjectOpenResult, ProjectSelectParams,
+    ProjectSelectedResult, RunActionResult, RunDoneParams, RunFocusParams, RunFocusResult,
+    TemplateApplyParams, Trigger,
 };
 
 use super::BoardClient;
@@ -345,6 +346,46 @@ fake_methods!(db, config, params, {
             }
         }
         serde_json::to_value(stamp(db.create_card(&p)?))?
+    },
+    "card.create_bound" => {
+        let p: BoundCardCreateParams = serde_json::from_value(params)?;
+        let board = db.get_board(p.card.board_id.unwrap_or(BOARD_ID))?;
+        if board.archived_at.is_some() || db.get_project(board.project_id)?.archived_at.is_some() {
+            anyhow::bail!("cannot select an Issue in an archived board or project");
+        }
+        let column = match p.card.column_id {
+            Some(id) => id,
+            None => db.default_column_id(board.id)?,
+        };
+        if db.require_column(column)?.trigger != Trigger::Manual {
+            anyhow::bail!("select an Issue in a manual column");
+        }
+        if let Some(existing) = db.active_card_for_issue(&p.issue.node_id)? {
+            if existing.board_id != board.id
+                || p.card.column_id.is_some_and(|id| id != existing.column_id)
+                || existing.source_issue.as_ref().map(|source| &source.identity) != Some(&p.issue)
+            {
+                anyhow::bail!("Issue is already selected elsewhere or its identity changed; reconcile explicitly");
+            }
+            return Ok(serde_json::to_value(stamp(existing))?);
+        }
+        serde_json::to_value(stamp(db.create_bound_card(&p.card, &p.issue)?))?
+    },
+    "card.issue.bind" => {
+        let p: CardIssueParams = serde_json::from_value(params)?;
+        serde_json::to_value(stamp(db.bind_card_issue(p.card_id, &p.issue)?))?
+    },
+    "card.issue.refresh" => {
+        let p: CardIssueParams = serde_json::from_value(params)?;
+        serde_json::to_value(stamp(db.refresh_card_issue(p.card_id, &p.issue)?))?
+    },
+    "card.issue.unlink" => {
+        let id = params["id"].as_i64().unwrap_or_default();
+        serde_json::to_value(stamp(db.unlink_card_issue(id)?))?
+    },
+    "card.issue.history" => {
+        let id = params["id"].as_i64().unwrap_or_default();
+        serde_json::to_value(db.card_issue_history(id)?)?
     },
     "card.duplicate" => {
         let id = params["id"].as_i64().unwrap_or_default();

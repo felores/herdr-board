@@ -556,6 +556,7 @@ fn card_with(
         created_at: String::new(),
         updated_at: String::new(),
         archived_at: None,
+        source_issue: None,
         labels: board_core::protocol::CardLabels::default(),
     }
 }

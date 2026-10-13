@@ -20,6 +20,7 @@ use commands::board::cmd_board;
 use commands::card::{cmd_card, cmd_move};
 use commands::column::cmd_column;
 use commands::discovery::{cmd_harness, cmd_session, cmd_space, cmd_status};
+use commands::evidence::{cmd_decision, cmd_evidence};
 use commands::project::cmd_project;
 use commands::run::{cmd_card_run, cmd_comment, cmd_pane_exited};
 use commands::template::cmd_template;
@@ -114,6 +115,8 @@ fn dispatch(cli: Cli) -> Result<()> {
         Cmd::Harness { sub } => cmd_harness(sub, &mut ctx),
         Cmd::Space { sub } => cmd_space(sub, &mut ctx),
         Cmd::Session { sub } => cmd_session(sub, &mut ctx),
+        Cmd::Evidence { sub } => cmd_evidence(sub, &mut ctx),
+        Cmd::Decision { sub } => cmd_decision(sub, &mut ctx),
         // Legacy top-level spellings. They only reshape their arguments and
         // then re-enter the canonical nested handler, so there is one
         // implementation per operation.

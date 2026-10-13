@@ -1,10 +1,179 @@
 use super::{arm_fault, mem};
 use board_core::db::{Db, EnqueueRun, FinalizeRun, BOARD_ID};
+use board_core::model::IssueIdentity;
 use board_core::protocol::{
     AwaitingReason, CardCreateParams, CardStatus, ColumnCreateParams, ColumnUpdateParams, Effort,
     Patch, RunOutcome, SpaceKind, Trigger,
 };
 use rusqlite::Connection;
+
+#[test]
+fn selected_issue_is_unique_among_active_cards_and_archived_history_is_preserved() {
+    let db = mem();
+    let board_id = db.open_board("/repo/project").unwrap().id;
+    let issue = IssueIdentity {
+        node_id: "I_kwDOexample".into(),
+        repository_id: "R_kgDOexample".into(),
+        repository: "owner/project".into(),
+        number: 42,
+        url: "https://github.com/owner/project/issues/42".into(),
+    };
+    let unbound = db
+        .create_card(&CardCreateParams {
+            title: "direct work".into(),
+            ..Default::default()
+        })
+        .unwrap();
+    assert!(unbound.source_issue.is_none());
+    let first = db
+        .create_bound_card(
+            &CardCreateParams {
+                title: "selected issue".into(),
+                board_id: Some(board_id),
+                ..Default::default()
+            },
+            &issue,
+        )
+        .unwrap();
+    assert_eq!(
+        first.source_issue.as_ref().unwrap().identity.node_id,
+        issue.node_id
+    );
+    let duplicate = CardCreateParams {
+        title: "duplicate selection".into(),
+        board_id: Some(board_id),
+        ..Default::default()
+    };
+    assert!(db.create_bound_card(&duplicate, &issue).is_err());
+    let foreign = db.open_board("/repo/other").unwrap();
+    assert!(db
+        .transfer_card(
+            first.id,
+            foreign.id,
+            db.default_column_id(foreign.id).unwrap(),
+            None
+        )
+        .is_err());
+    db.set_card_archived(first.id, true).unwrap();
+    let second = db.create_bound_card(&duplicate, &issue).unwrap();
+    assert_eq!(
+        second.source_issue.as_ref().unwrap().identity.repository_id,
+        issue.repository_id
+    );
+    assert_eq!(
+        db.require_card(first.id)
+            .unwrap()
+            .source_issue
+            .unwrap()
+            .identity
+            .node_id,
+        issue.node_id
+    );
+    assert!(db.set_card_archived(first.id, false).is_err());
+}
+
+#[test]
+fn issue_identity_changes_require_explicit_unlink_and_leave_audit_history() {
+    let db = mem();
+    let board = db.open_board("/repo/project").unwrap();
+    let card = db
+        .create_card(&CardCreateParams {
+            board_id: Some(board.id),
+            title: "legacy work".into(),
+            ..Default::default()
+        })
+        .unwrap();
+    let mut issue = IssueIdentity {
+        node_id: "I_kwDOone".into(),
+        repository_id: "R_kgDOrepo".into(),
+        repository: "owner/project".into(),
+        number: 42,
+        url: "https://github.com/owner/project/issues/42".into(),
+    };
+    assert_eq!(
+        db.bind_card_issue(card.id, &issue)
+            .unwrap()
+            .source_issue
+            .unwrap()
+            .identity,
+        issue
+    );
+    issue.number = 43;
+    issue.url = "https://github.com/owner/project/issues/43".into();
+    assert_eq!(
+        db.refresh_card_issue(card.id, &issue)
+            .unwrap()
+            .source_issue
+            .unwrap()
+            .identity,
+        issue
+    );
+    let mut other = issue.clone();
+    other.node_id = "I_kwDOtwo".into();
+    assert!(db.bind_card_issue(card.id, &other).is_err());
+    assert!(db.refresh_card_issue(card.id, &other).is_err());
+    assert!(db
+        .unlink_card_issue(card.id)
+        .unwrap()
+        .source_issue
+        .is_none());
+    assert_eq!(
+        db.bind_card_issue(card.id, &other)
+            .unwrap()
+            .source_issue
+            .unwrap()
+            .identity,
+        other
+    );
+    let actions: Vec<_> = db
+        .card_issue_history(card.id)
+        .unwrap()
+        .into_iter()
+        .map(|entry| entry.action)
+        .collect();
+    assert_eq!(actions, ["bind", "refresh", "unlink", "bind"]);
+}
+
+#[test]
+fn repository_id_only_refresh_is_audited_on_fresh_database() {
+    let db = mem();
+    let board = db.open_board("/repo/project").unwrap();
+    let original = IssueIdentity {
+        node_id: "I_kwDOone".into(),
+        repository_id: "R_old".into(),
+        repository: "owner/project".into(),
+        number: 42,
+        url: "https://github.com/owner/project/issues/42".into(),
+    };
+    let card = db
+        .create_bound_card(
+            &CardCreateParams {
+                board_id: Some(board.id),
+                title: "selected".into(),
+                ..Default::default()
+            },
+            &original,
+        )
+        .unwrap();
+    let mut changed = original.clone();
+    changed.repository_id = "R_new".into();
+    db.refresh_card_issue(card.id, &changed).unwrap();
+    assert_eq!(
+        db.require_card(card.id)
+            .unwrap()
+            .source_issue
+            .unwrap()
+            .identity,
+        changed
+    );
+    let actions: Vec<_> = db
+        .card_issue_history(card.id)
+        .unwrap()
+        .into_iter()
+        .map(|entry| entry.action)
+        .collect();
+    assert_eq!(actions, ["bind", "refresh"]);
+}
 
 #[test]
 fn nullable_updates_set_then_clear_and_survive_reopen() {

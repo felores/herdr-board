@@ -2,6 +2,7 @@ use std::time::{Duration, Instant};
 
 use super::super::herdr::handle_event;
 use super::{active_daemon, status};
+use board_core::model::DecisionTarget;
 use board_core::protocol::{AwaitingReason, BoardChangedReason, CardStatus, Event};
 use board_herdr::AgentStatus;
 
@@ -43,6 +44,39 @@ fn working_restores_running_and_clears_idle_state() {
             ..
         } if id == card_id
     ));
+}
+
+#[test]
+fn working_cannot_bypass_an_open_answer_decision() {
+    let (d, run_id, card_id, _events) = active_daemon();
+    d.store
+        .lock()
+        .set_card_status(card_id, CardStatus::Blocked)
+        .unwrap();
+    d.store
+        .lock()
+        .open_decision(
+            1,
+            card_id,
+            run_id,
+            "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            &DecisionTarget {
+                machine_id: "local".into(),
+                herdr_session: "default".into(),
+                workspace_id: "w1".into(),
+                pane_id: "p1".into(),
+                terminal_id: "t1".into(),
+                agent_session_identity: "session".into(),
+            },
+        )
+        .unwrap();
+
+    handle_event(&d, status(AgentStatus::Working));
+
+    assert_eq!(
+        d.store.lock().get_card(card_id).unwrap().unwrap().status,
+        CardStatus::Blocked
+    );
 }
 
 #[test]

@@ -28,11 +28,29 @@ for your architecture verified by SHA-256, exact version string, and socket
 protocol 22 (both `amd64` and `arm64` assets are pinned). Nothing floats; the
 image is rebuilt automatically when the `docker/` directory changes.
 
-## The one-command edit-test loop
+## Checkpoint and handoff verification
 
 ```bash
 scripts/sandbox.sh prepare   # once per worktree: image, volumes, dependency fetch
-scripts/sandbox.sh gates     # the full deterministic suite, offline
+scripts/sandbox.sh check rust <test-filter>  # focused checkpoint while iterating
+scripts/sandbox.sh gates     # full deterministic suite once before handoff
+```
+
+During interactive review, batch related edits and use direct inspection between
+human feedback turns. Run one focused `check` at a meaningful checkpoint. Do not
+restart the full suite after every small adjustment. `gates` is the final
+handoff proof for a changed tree, not an edit-by-edit loop. If a proposed Board
+change is fully reverted and the repository is clean, no Board gate is owed.
+
+Focused modes stay inside the same isolation profile:
+
+```bash
+scripts/sandbox.sh check rust <cargo-test-filter>
+scripts/sandbox.sh check python [test_filename_pattern]
+scripts/sandbox.sh check harness
+scripts/sandbox.sh check e2e 03-sessions
+scripts/sandbox.sh check fmt
+scripts/sandbox.sh check clippy
 ```
 
 `gates` runs, inside one isolated container:
@@ -203,12 +221,20 @@ scripts/sandbox.sh artifacts            # copy run/e2e evidence out of the sandb
 scripts/sandbox.sh artifacts ~/e2e-out  # or to an explicit destination
 scripts/sandbox.sh reset --target       # drop build output only
 scripts/sandbox.sh reset --all          # volumes + image for this worktree
+scripts/sandbox.sh prune                # labeled volumes for deleted worktrees only
 ```
 
 `artifacts` refuses to write inside the repository; the default destination is
-`~/.cache/herdr-board/sandbox-artifacts/<timestamp>`. `reset` only ever
-touches resources with this worktree's `hb-sb-<slug>-…` prefix (plus the
-shared sandbox image tag).
+`~/.cache/herdr-board/sandbox-artifacts/<timestamp>`. Each worktree's resource
+slug combines its directory name and a digest of its absolute path, so two
+worktrees named `herdr-board` do not share volumes. `reset` only ever touches
+resources with this worktree's `hb-sb-<slug>-…` prefix (plus the shared sandbox
+image tag). Existing volumes with an older basename-only slug are not adopted.
+
+New sandbox volumes carry labels for the owning worktree and resource kind.
+`prune` considers only those labeled volumes, retains any volume whose worktree
+still exists or which a container references, and removes only proven orphan
+volumes. Older unlabeled volumes are never deleted automatically.
 
 ## Architecture behavior
 

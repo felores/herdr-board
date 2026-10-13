@@ -12,6 +12,9 @@ pub(crate) enum CardCmd {
     Create {
         #[arg(long)]
         title: String,
+        /// Select a writable GitHub Issue from this project's push repository.
+        #[arg(long, value_name = "OWNER/REPO#NUMBER|URL")]
+        issue: Option<String>,
         #[arg(long, short = 'd')]
         description: Option<String>,
         #[arg(long)]
@@ -123,6 +126,29 @@ pub(crate) enum CardCmd {
         #[command(subcommand)]
         sub: RunCmd,
     },
+    /// Manage an optional GitHub Issue binding and its local audit history.
+    Issue {
+        #[command(subcommand)]
+        sub: IssueCmd,
+    },
+}
+
+#[derive(Subcommand)]
+pub(crate) enum IssueCmd {
+    /// Inspect one bound Issue live without changing the card or importing backlog.
+    Inspect { card_id: i64 },
+    /// Bind a legacy unbound card to one writable repository Issue.
+    Bind { card_id: i64, issue: String },
+    /// Refresh display coordinates using the immutable Issue node ID.
+    Refresh { card_id: i64 },
+    /// Explicitly remove a binding without erasing its audit history.
+    Unlink {
+        card_id: i64,
+        #[command(flatten)]
+        confirm: ConfirmArgs,
+    },
+    /// Show local binding changes, not GitHub delivery proof.
+    History { card_id: i64 },
 }
 
 #[derive(Subcommand)]

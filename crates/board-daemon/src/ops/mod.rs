@@ -16,6 +16,8 @@ mod columns;
 mod comments;
 mod discovery;
 mod errors;
+mod evidence;
+mod issues;
 mod panes;
 mod projects;
 mod runs;
@@ -95,6 +97,11 @@ routes!(d, params, {
     "column.delete" => columns::column_delete(d, from(params)?),
     "template.apply" => boards::template_apply(d, from(params)?),
     "card.create" => cards::card_create(d, from(params)?),
+    "card.create_bound" => cards::card_create_bound(d, from(params)?),
+    "card.issue.bind" => issues::bind(d, from(params)?),
+    "card.issue.refresh" => issues::refresh(d, from(params)?),
+    "card.issue.unlink" => issues::unlink(d, from(params)?),
+    "card.issue.history" => issues::history(d, from(params)?),
     "card.duplicate" => cards::card_duplicate(d, from(params)?),
     "card.update" => cards::card_update(d, from(params)?),
     "card.delete" => cards::card_delete(d, from(params)?),
@@ -107,6 +114,11 @@ routes!(d, params, {
     "comment.update" => comments::comment_update(d, from(params)?),
     "comment.delete" => comments::comment_delete(d, from(params)?),
     "comment.history" => comments::comment_history(d, from(params)?),
+    "evidence.put" => evidence::evidence_put(d, from(params)?),
+    "evidence.get" => evidence::evidence_get(d, from(params)?),
+    "decision.open" => evidence::decision_open(d, from(params)?),
+    "decision.get" => evidence::decision_get(d, from(params)?),
+    "decision.receipt" => evidence::decision_receipt(d, from(params)?),
     "run.done" => runs::run_done(d, from(params)?),
     "run.pane_exited" => runs::run_pane_exited(d, from(params)?),
     "run.cancel" => runs::run_cancel(d, from(params)?),

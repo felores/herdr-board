@@ -108,7 +108,7 @@ The `pipeline` template is atomic and only applies to an empty board containing 
 ### Cards
 
 ```bash
-board card create --title TITLE [-d DESCRIPTION] [--column COLUMN] \
+board card create --title TITLE [-d DESCRIPTION] [--column COLUMN] [--issue OWNER/REPO#NUMBER|URL] \
   [--harness HARNESS] [--model MODEL] [--effort EFFORT] [--permission MODE] \
   [--session SESSION] [--space-kind workspace|new-workspace] \
   [--space-ref REF] [--space-cwd DIR] [--json]
@@ -123,6 +123,11 @@ board card duplicate ID [--json]
 board card archive ID [--json]
 board card restore ID [--json]
 board card delete ID [--yes] [--json]
+board card issue bind ID OWNER/REPO#NUMBER|URL [--json]
+board card issue refresh ID [--json]
+board card issue inspect ID [--json]  # one read-only live lookup; unknown on outage
+board card issue unlink ID --yes [--json]
+board card issue history ID [--json]
 ```
 
 `card duplicate` copies a card into a fresh idle card inserted directly below it: title gains
@@ -169,6 +174,14 @@ refused while a card has an open run.
 Archiving and deletion also require an idle/terminal card; cancel an open run first. Delete is
 permanent and removes card history. It prompts on a TTY and requires `--yes` in non-interactive use.
 
+`--issue` is optional and only applies to a repository-scoped project with a matching Git push
+remote and a GitHub repository writable by the `gh` account. Select in a manual column, then
+dispatch separately. Duplicate selection reuses the bound active card. `card issue bind` links
+an existing unbound card; `refresh` looks up the same immutable node ID, including after a
+rename or transfer, and leaves the old link untouched if GitHub is inaccessible. Rebinding a
+different Issue requires an explicit `unlink` first. The audit stays outside comments/prompts.
+Issue bindings and evidence are observations, not permission to close Issues or claim delivery.
+
 ### Comments
 
 ```bash
@@ -177,6 +190,12 @@ board card comment show COMMENT_ID [--json]
 board card comment edit COMMENT_ID BODY [--json]
 board card comment delete COMMENT_ID [--yes] [--json]
 board card comment history COMMENT_ID [--json]
+
+# Machine evidence is explicit, idempotent, and never prompt context.
+board evidence put CARD_ID --producer harness --dedupe-key KEY \
+  --schema harness-board-evidence/v1 --payload-json JSON [--json]
+board evidence get CARD_ID --producer harness --dedupe-key KEY [--json]
+board decision get DECISION_ID [--json]
 ```
 
 Add returns the compact current comment (`id`, `card_id`, `author`, `body`, `created_at`);

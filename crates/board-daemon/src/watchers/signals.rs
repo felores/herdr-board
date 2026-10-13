@@ -93,6 +93,12 @@ fn apply_signal_guarded(
             Ok(Some(card)) => card,
             _ => return,
         };
+        if signal == AgentSignal::Working
+            && card.status == CardStatus::Blocked
+            && db.has_open_decision(run_id).unwrap_or(true)
+        {
+            return;
+        }
         let Some(dec) = decide_signal(card.status, signal) else {
             return;
         };

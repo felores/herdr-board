@@ -98,6 +98,37 @@ impl SpaceKey {
     }
 }
 
+/// GitHub's immutable issue and repository node IDs, plus their current
+/// display coordinates. The latter can change after a rename or transfer.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct IssueIdentity {
+    pub node_id: String,
+    pub repository_id: String,
+    pub repository: String,
+    pub number: i64,
+    pub url: String,
+}
+
+/// The last observed issue identity. Observation is not delivery proof.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SourceIssue {
+    #[serde(flatten)]
+    pub identity: IssueIdentity,
+    pub observed_at: String,
+}
+
+/// Immutable local audit of explicit binding changes. It does not establish
+/// the external Issue's current state or authenticate the requesting client.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct IssueAuditEntry {
+    pub id: i64,
+    pub card_id: i64,
+    pub action: String,
+    pub old_node_id: Option<String>,
+    pub new_node_id: Option<String>,
+    pub changed_at: String,
+}
+
 /// A unit of work.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Card {
@@ -127,6 +158,9 @@ pub struct Card {
     pub updated_at: String,
     /// When the card was archived; `None` means it is active on the board.
     pub archived_at: Option<String>,
+    /// Optional issue selected for this card; absent for direct or non-repo work.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_issue: Option<SourceIssue>,
     /// Read-only display labels stamped by the daemon (ready strings; the
     /// clients render them verbatim). Populated on read; never round-tripped.
     /// Missing on older serialized payloads, so default to empty.
@@ -226,4 +260,46 @@ pub struct Run {
     pub outcome: Option<RunOutcome>,
     pub result_summary: Option<String>,
     pub log_path: Option<String>,
+}
+
+/// Idempotent client-declared evidence attached to a card. `producer` and payload
+/// are not authenticated; consumers must not infer delivery or verification.
+/// It is never prompt input.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Evidence {
+    pub id: i64,
+    pub card_id: i64,
+    pub producer: String,
+    pub dedupe_key: String,
+    pub schema: String,
+    pub payload: serde_json::Value,
+    pub payload_hash: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DecisionTarget {
+    pub machine_id: String,
+    pub herdr_session: String,
+    pub workspace_id: String,
+    pub pane_id: String,
+    pub terminal_id: String,
+    pub agent_session_identity: String,
+}
+
+/// One exact blocked-question occurrence owned by Board.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DecisionOccurrence {
+    pub decision_id: String,
+    pub board_id: i64,
+    pub card_id: i64,
+    pub run_id: i64,
+    pub question_hash: String,
+    pub target: DecisionTarget,
+    pub target_fingerprint: String,
+    pub state: String,
+    pub delivery_id: Option<String>,
+    pub answer_hash: Option<String>,
+    pub created_at: String,
+    pub delivered_at: Option<String>,
 }

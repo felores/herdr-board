@@ -1,6 +1,44 @@
 use super::*;
 
 #[test]
+fn issue_selection_is_atomic_and_requires_a_manual_column() {
+    let d = test_daemon(Config::default());
+    let board = d.store.lock().open_board("/repo/project").unwrap();
+    let issue = json!({
+        "node_id":"I_kwDOexample","repository_id":"R_kgDOexample",
+        "repository":"owner/project","number":42,
+        "url":"https://github.com/owner/project/issues/42"
+    });
+    let params = json!({"card":{"board_id":board.id,"title":"selected"},"issue":issue});
+    let first = handle_request(&d, "card.create_bound", params.clone()).unwrap();
+    assert_eq!(first["source_issue"]["node_id"], issue["node_id"]);
+    assert_eq!(first["status"], "idle");
+    let replay = handle_request(&d, "card.create_bound", params.clone()).unwrap();
+    assert_eq!(replay["id"], first["id"]);
+    assert_eq!(d.store.lock().list_cards(board.id).unwrap().len(), 1);
+
+    let other_board = d.store.lock().open_board("/repo/other").unwrap();
+    let mut wrong_board = params.clone();
+    wrong_board["card"]["board_id"] = json!(other_board.id);
+    assert!(handle_request(&d, "card.create_bound", wrong_board).is_err());
+
+    let auto = d
+        .store
+        .lock()
+        .create_column(&board_core::protocol::ColumnCreateParams {
+            board_id: Some(board.id),
+            name: "Auto".into(),
+            trigger: Some(Trigger::Auto),
+            ..Default::default()
+        })
+        .unwrap();
+    let mut auto_params = params;
+    auto_params["card"]["column_id"] = json!(auto.id);
+    assert!(handle_request(&d, "card.create_bound", auto_params).is_err());
+    assert_eq!(d.store.lock().list_cards(board.id).unwrap().len(), 1);
+}
+
+#[test]
 fn card_delete_rejects_and_preserves_queued_blocked_and_awaiting_open_runs() {
     for (status, started) in [
         (CardStatus::Queued, false),

@@ -2,7 +2,7 @@
 
 ![Rust](https://img.shields.io/badge/rust-edition%202021-orange.svg)
 ![herdr 0.9.0+](https://img.shields.io/badge/herdr-0.9.0%2B-8a2be2)
-![board protocol v1 · schema v15](https://img.shields.io/badge/board-protocol%20v1%20%C2%B7%20schema%20v15-blue.svg)
+![board protocol v1 · schema v17](https://img.shields.io/badge/board-protocol%20v1%20%C2%B7%20schema%20v17-blue.svg)
 ![platforms: linux, macOS](https://img.shields.io/badge/platforms-linux%2C%20macOS-informational)
 
 **Turn a kanban card into a real AI coding agent running in a visible Herdr pane.** Cards hold
@@ -141,7 +141,7 @@ prefix is `ctrl+a`, it is `Ctrl+A Shift+K`). Do not reuse `prefix+k` — it is H
   Rust toolchain with `cargo`; Linux and macOS are supported. The daemon rejects any other socket
   protocol before workspace discovery and pane launch; a different Herdr version is warned about,
   not rejected, as long as the socket speaks protocol 22.
-- Board protocol **v1**, SQLite schema **v15** (`schema.sql`; upgrades via `board-core::db`).
+- Board protocol **v1**, SQLite schema **v16** (`schema.sql`; upgrades via `board-core::db`).
 - The installer copies the `board` CLI to `~/.local/bin` — make sure that directory is on your
   `PATH` (`HERDR_BOARD_CLI_INSTALL_DIR` overrides it before installing).
 - Without the harness integration the board still dispatches and accepts `board done`, but runs in
@@ -243,6 +243,7 @@ prints those exact bytes, so a dispatched agent can read the contract it is held
 board --board <ID|PATH> card list --json
 board card list --board <ID|PATH> --json     # identical
 board --project /path/to/repo board list
+board --project /path/to/repo card create --title "Selected work" --issue OWNER/REPO#42
 ```
 
 `--board` takes a stable board id or canonical scope path; `--project` takes a canonical scope path
@@ -258,11 +259,14 @@ selected/current board.
 | `board board` | `list [--all|--project PATH]`, `show [ID|PATH|NAME]`, `open PATH`, `create NAME [--project PATH]`, `select ID|NAME [--project PATH]`, `rename [SELECTOR] NAME` |
 | `board template` | `apply <NAME>` |
 | `board card` | `create` (alias `new`), `edit`, `show`, `list`, `move`, `duplicate`, `archive`, `restore`, `delete` |
+| `board card issue` | `bind`, `refresh`, `inspect`, `unlink --yes`, `history` |
 | `board card comment` | `add`, `show`, `edit`, `delete`, `history` |
 | `board card run` | `done`, `confirm`, `cancel`, `retry`, `focus` |
 | `board column` | `list`, `create`, `show`, `edit`, `reorder`, `delete` |
 | `board harness` | `list`, `models`, `efforts`, `permissions` |
 | `board space` / `board session` | `list` |
+| `board evidence` | `put`, `get` |
+| `board decision` | `get` |
 | `board tui` · `board daemon` · `board version` · `board skill` | see below |
 
 Legacy top-level forms stay supported and re-dispatch into the nested handlers: `board comment`,
@@ -270,6 +274,16 @@ Legacy top-level forms stay supported and re-dispatch into the nested handlers: 
 aliases. Cross-board `move` should use `--destination-board`; a cross-**project** move uses
 `--to-project PATH --to-board NAME|ID`. The old global-`--board` fallback still works but warns on
 stderr.
+
+`--issue` selects a writable GitHub Issue in a manual column, resolving its immutable identity
+through `gh` and checking the project's Git push remote. Repeating the selection reuses its
+active card. This link does not import Issues or close them when a card completes.
+`board --project /path/to/repo card issue inspect ID --json` performs one live, read-only
+GitHub lookup by immutable node ID and returns Board execution, GitHub state, timestamps,
+source identities, and mismatch diagnostics. An unavailable or hidden Issue is **unknown**,
+not open or closed. Verification and delivery remain `not_assessed`; this command neither
+authenticates Board evidence nor changes GitHub, the Board, or the repository. Portfolio may
+join this per-card observation with its own registered repository and backlog reads.
 
 ### Daemon
 

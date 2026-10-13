@@ -8,7 +8,7 @@ use crate::{Error, Result};
 const SCHEMA_SQL: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../schema.sql"));
 
 /// The latest schema version embedded in [`SCHEMA_SQL`].
-const SCHEMA_VERSION: i64 = 15;
+const SCHEMA_VERSION: i64 = 17;
 
 /// v1 → v2 migration. SQLite cannot alter a CHECK constraint or drop a column
 /// in place, so `cards` is rebuilt. Legacy `space_kind` values `cwd`/`worktree`
@@ -303,6 +303,82 @@ END;
 /// `user_version` only advances after both columns exist.
 const V15_MIGRATION_TABLES: [&str; 2] = ["projects", "boards"];
 
+const V16_MIGRATION_SQL: &str = "
+CREATE TABLE IF NOT EXISTS evidence (
+  id INTEGER PRIMARY KEY,
+  card_id INTEGER NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+  producer TEXT NOT NULL,
+  dedupe_key TEXT NOT NULL,
+  schema_name TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  payload_hash TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(card_id, producer, dedupe_key)
+);
+CREATE TABLE IF NOT EXISTS decisions (
+  id TEXT PRIMARY KEY,
+  board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+  card_id INTEGER NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+  run_id INTEGER NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+  question_hash TEXT NOT NULL,
+  machine_id TEXT NOT NULL,
+  herdr_session TEXT NOT NULL,
+  workspace_id TEXT NOT NULL,
+  pane_id TEXT NOT NULL,
+  terminal_id TEXT NOT NULL,
+  agent_session_identity TEXT NOT NULL,
+  target_fingerprint TEXT NOT NULL,
+  state TEXT NOT NULL CHECK (state IN ('open','delivered','superseded')),
+  delivery_id TEXT,
+  answer_hash TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  delivered_at TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_decisions_one_open_per_run
+  ON decisions(run_id) WHERE state='open';
+";
+
+const V17_ISSUE_COLUMNS: [&str; 6] = [
+    "issue_node_id TEXT",
+    "issue_repository_id TEXT",
+    "issue_repository TEXT",
+    "issue_number INTEGER CHECK (issue_number IS NULL OR issue_number > 0)",
+    "issue_url TEXT",
+    "issue_observed_at TEXT",
+];
+
+const V17_MIGRATION_SQL: &str = "
+CREATE UNIQUE INDEX IF NOT EXISTS idx_cards_one_active_issue ON cards(issue_node_id)
+  WHERE issue_node_id IS NOT NULL AND archived_at IS NULL;
+CREATE TABLE IF NOT EXISTS card_issue_history (
+  id INTEGER PRIMARY KEY,
+  card_id INTEGER NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+  action TEXT NOT NULL CHECK (action IN ('bind','refresh','unlink')),
+  old_node_id TEXT,
+  new_node_id TEXT,
+  changed_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_card_issue_history_card ON card_issue_history(card_id, id);
+CREATE TRIGGER IF NOT EXISTS audit_card_issue_insert AFTER INSERT ON cards
+WHEN NEW.issue_node_id IS NOT NULL
+BEGIN
+  INSERT INTO card_issue_history(card_id, action, new_node_id)
+  VALUES(NEW.id, 'bind', NEW.issue_node_id);
+END;
+CREATE TRIGGER IF NOT EXISTS audit_card_issue_update AFTER UPDATE OF issue_node_id, issue_repository_id, issue_repository,
+  issue_number, issue_url ON cards
+WHEN NEW.issue_node_id IS NOT OLD.issue_node_id OR
+  NEW.issue_repository_id IS NOT OLD.issue_repository_id OR
+  NEW.issue_repository IS NOT OLD.issue_repository OR
+  NEW.issue_number IS NOT OLD.issue_number OR NEW.issue_url IS NOT OLD.issue_url
+BEGIN
+  INSERT INTO card_issue_history(card_id, action, old_node_id, new_node_id)
+  VALUES(NEW.id, CASE WHEN NEW.issue_node_id IS NULL THEN 'unlink'
+                      WHEN OLD.issue_node_id IS NULL THEN 'bind' ELSE 'refresh' END,
+         OLD.issue_node_id, NEW.issue_node_id);
+END;
+";
+
 impl Db {
     /// Apply migrations gated on `PRAGMA user_version`. Idempotent.
     ///
@@ -553,6 +629,24 @@ impl Db {
                         ))?;
                     }
                 }
+            }
+            if version < 16 {
+                self.conn.execute_batch(V16_MIGRATION_SQL)?;
+            }
+            if version < 17 {
+                for column in V17_ISSUE_COLUMNS {
+                    let name = column.split_whitespace().next().unwrap_or_default();
+                    let exists: bool = self.conn.query_row(
+                        "SELECT EXISTS(SELECT 1 FROM pragma_table_info('cards') WHERE name=?1)",
+                        params![name],
+                        |r| r.get(0),
+                    )?;
+                    if !exists {
+                        self.conn
+                            .execute_batch(&format!("ALTER TABLE cards ADD COLUMN {column}"))?;
+                    }
+                }
+                self.conn.execute_batch(V17_MIGRATION_SQL)?;
             }
             self.conn
                 .pragma_update(None, "user_version", SCHEMA_VERSION)?;

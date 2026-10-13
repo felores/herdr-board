@@ -143,8 +143,8 @@ fn v12_to_v13_preserves_board_card_comment_and_run_bytes() {
             .expect("v12 marker");
     }
 
-    let db = Db::open(&path).expect("v12 -> v14 migration");
-    assert_eq!(db.user_version().expect("schema version"), 15);
+    let db = Db::open(&path).expect("v12 -> current migration");
+    assert_eq!(db.user_version().expect("schema version"), 17);
     // The legacy Global board becomes the Global project's first board `main`.
     let board = db.get_board(1).expect("board");
     assert_eq!(board.name, "main");

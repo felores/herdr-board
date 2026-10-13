@@ -20,6 +20,8 @@ mod events;
 mod exit_codes;
 #[path = "integration/harness.rs"]
 mod harness;
+#[path = "integration/issue_binding.rs"]
+mod issue_binding;
 #[path = "integration/lifecycle.rs"]
 mod lifecycle;
 #[path = "integration/meta.rs"]

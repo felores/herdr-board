@@ -2,7 +2,7 @@ use rusqlite::{params, OptionalExtension};
 
 use super::rows;
 use super::{Db, EnqueueRun, BOARD_ID};
-use crate::model::{Card, Comment, CommentHistory, CommentRecord};
+use crate::model::{Card, Comment, CommentHistory, CommentRecord, IssueIdentity};
 use crate::protocol::{
     AwaitingReason, CardCreateParams, CardDetail, CardStatus, CardUpdateParams, CardVisibility,
     Effort, Patch, SpaceKind,
@@ -105,8 +105,36 @@ impl Db {
     }
 
     pub fn create_card(&self, p: &CardCreateParams) -> Result<Card> {
+        self.create_card_with_issue(p, None)
+    }
+
+    /// Select an Issue and create its card in one database write. Only a
+    /// manually triggered column may use this path (checked by the daemon).
+    pub fn create_bound_card(&self, p: &CardCreateParams, issue: &IssueIdentity) -> Result<Card> {
+        if p.position.is_some() {
+            return Err(Error::BadRequest(
+                "select the Issue before separately positioning its card".into(),
+            ));
+        }
+        self.create_card_with_issue(p, Some(issue))
+    }
+
+    fn create_card_with_issue(
+        &self,
+        p: &CardCreateParams,
+        issue: Option<&IssueIdentity>,
+    ) -> Result<Card> {
         let board_id = p.board_id.unwrap_or(BOARD_ID);
-        self.get_board(board_id)?;
+        let board = self.get_board(board_id)?;
+        if let Some(issue) = issue {
+            super::issues::validate_issue(issue)?;
+            if board.scope_path.is_none() {
+                return Err(Error::BadRequest(
+                    "issue card requires a repository-scoped board".into(),
+                ));
+            }
+            self.require_issue_available(&issue.node_id, None)?;
+        }
         let column_id = match p.column_id {
             Some(c) => c,
             None => self.default_column_id(board_id)?,
@@ -133,8 +161,10 @@ impl Db {
         self.conn.execute(
             "INSERT INTO cards
              (board_id,column_id,position,title,description,harness,model,effort,permission_mode,
-              session,space_kind,space_ref,space_cwd,status,session_id)
-             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,'idle',NULL)",
+              session,space_kind,space_ref,space_cwd,status,session_id,
+              issue_node_id,issue_repository_id,issue_repository,issue_number,issue_url,issue_observed_at)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,'idle',NULL,
+                     ?14,?15,?16,?17,?18,CASE WHEN ?14 IS NOT NULL THEN datetime('now') END)",
             params![
                 board_id,
                 column_id,
@@ -149,6 +179,11 @@ impl Db {
                 space_kind,
                 p.space_ref,
                 p.space_cwd,
+                issue.map(|i| i.node_id.as_str()),
+                issue.map(|i| i.repository_id.as_str()),
+                issue.map(|i| i.repository.as_str()),
+                issue.map(|i| i.number),
+                issue.map(|i| i.url.as_str()),
             ],
         )?;
         let id = self.conn.last_insert_rowid();
@@ -343,13 +378,16 @@ impl Db {
     }
 
     pub fn set_card_archived(&self, id: i64, archived: bool) -> Result<Card> {
-        self.require_card(id)?;
+        let card = self.require_card(id)?;
         if archived {
             self.conn.execute(
                 "UPDATE cards SET archived_at=datetime('now'), updated_at=datetime('now') WHERE id=?1",
                 params![id],
             )?;
         } else {
+            if let Some(issue) = card.source_issue.as_ref() {
+                self.require_issue_available(&issue.identity.node_id, Some(id))?;
+            }
             self.conn.execute(
                 "UPDATE cards SET archived_at=NULL, updated_at=datetime('now') WHERE id=?1",
                 params![id],
@@ -445,6 +483,7 @@ impl Db {
     ) -> Result<(Card, crate::model::Run)> {
         let card = self.require_card(id)?;
         self.get_board(target_board)?;
+        self.require_issue_transfer_project(&card, target_board)?;
         let target = self.require_column(target_column)?;
         if target.board_id != target_board {
             return Err(Error::InvalidState(format!(
@@ -489,6 +528,7 @@ impl Db {
         let tx = self.conn.unchecked_transaction()?;
         let card = self.require_card(id)?;
         self.get_board(target_board)?;
+        self.require_issue_transfer_project(&card, target_board)?;
         let target = self.require_column(target_column)?;
         if target.board_id != target_board {
             return Err(Error::InvalidState(format!(

@@ -1,10 +1,11 @@
 use anyhow::{anyhow, bail, Result};
 use board_core::client::BoardClient;
 use board_core::protocol::{
-    BoardSnapshot, CardCreateParams, CardMoveParams, CardUpdateParams, Patch,
+    BoardSnapshot, BoundCardCreateParams, CardCreateParams, CardIssueParams, CardMoveParams,
+    CardUpdateParams, Patch,
 };
 
-use crate::args::CardCmd;
+use crate::args::{CardCmd, IssueCmd};
 use crate::commands::board::resolve_board_in_list;
 use crate::commands::run::{cmd_card_comment, cmd_card_run};
 use crate::context::Ctx;
@@ -23,11 +24,18 @@ pub(crate) fn cmd_card(sub: CardCmd, ctx: &mut Ctx) -> Result<()> {
     {
         confirm_action("comment deletion", confirm.yes)?;
     }
+    if let CardCmd::Issue {
+        sub: IssueCmd::Unlink { confirm, .. },
+    } = &sub
+    {
+        confirm_action("Issue unlink", confirm.yes)?;
+    }
 
     let json = ctx.json();
     match sub {
         CardCmd::Create {
             title,
+            issue,
             description,
             column,
             harness,
@@ -40,6 +48,10 @@ pub(crate) fn cmd_card(sub: CardCmd, ctx: &mut Ctx) -> Result<()> {
             space_cwd,
         } => {
             let column_id = ctx.optional_column_id(column.as_deref())?;
+            let source_issue = issue
+                .as_deref()
+                .map(|reference| super::github_issue::resolve(ctx, reference))
+                .transpose()?;
             let p = CardCreateParams {
                 title,
                 board_id: Some(ctx.board_id()?),
@@ -55,7 +67,12 @@ pub(crate) fn cmd_card(sub: CardCmd, ctx: &mut Ctx) -> Result<()> {
                 space_cwd,
                 position: None,
             };
-            let card = ctx.client()?.card_create(&p)?;
+            let card = match source_issue {
+                Some(issue) => ctx
+                    .client()?
+                    .card_create_bound(&BoundCardCreateParams { card: p, issue })?,
+                None => ctx.client()?.card_create(&p)?,
+            };
             emit_line(
                 &card,
                 json,
@@ -152,7 +169,65 @@ pub(crate) fn cmd_card(sub: CardCmd, ctx: &mut Ctx) -> Result<()> {
         ),
         CardCmd::Comment { sub } => cmd_card_comment(sub, ctx),
         CardCmd::Run { sub } => cmd_card_run(sub, ctx),
+        CardCmd::Issue { sub } => cmd_issue(sub, ctx),
     }
+}
+
+fn cmd_issue(sub: IssueCmd, ctx: &mut Ctx) -> Result<()> {
+    let json = ctx.json();
+    match sub {
+        IssueCmd::Inspect { card_id } => {
+            let detail = ctx.client()?.card_get(card_id)?;
+            if detail.card.board_id != ctx.board_id()? {
+                bail!("card #{card_id} does not belong to the selected Board project");
+            }
+            let mut projection = super::github_issue::inspect(&detail)?;
+            projection["card"]["project_scope"] = serde_json::json!(ctx.board()?.board.scope_path);
+            emit_line(
+                &projection,
+                json,
+                super::github_issue::inspection_line(&projection),
+            )
+        }
+        IssueCmd::Bind { card_id, issue } => {
+            require_selected_card(ctx, card_id)?;
+            let issue = super::github_issue::resolve(ctx, &issue)?;
+            let card = ctx
+                .client()?
+                .card_issue_bind(&CardIssueParams { card_id, issue })?;
+            emit_line(&card, json, format!("Bound Issue to card #{card_id}"))
+        }
+        IssueCmd::Refresh { card_id } => {
+            let card = require_selected_card(ctx, card_id)?;
+            let source = card
+                .source_issue
+                .ok_or_else(|| anyhow!("card #{card_id} has no Issue"))?;
+            let issue = super::github_issue::resolve_node(ctx, &source.identity.node_id)?;
+            let card = ctx
+                .client()?
+                .card_issue_refresh(&CardIssueParams { card_id, issue })?;
+            emit_line(&card, json, format!("Refreshed Issue on card #{card_id}"))
+        }
+        IssueCmd::Unlink { card_id, .. } => {
+            require_selected_card(ctx, card_id)?;
+            let card = ctx.client()?.card_issue_unlink(card_id)?;
+            emit_line(&card, json, format!("Unlinked Issue from card #{card_id}"))
+        }
+        IssueCmd::History { card_id } => {
+            require_selected_card(ctx, card_id)?;
+            let entries = ctx.client()?.card_issue_history(card_id)?;
+            emit(&entries, json)
+        }
+    }
+}
+
+fn require_selected_card(ctx: &mut Ctx, id: i64) -> Result<board_core::model::Card> {
+    let board_id = ctx.board_id()?;
+    let card = ctx.client()?.card_get(id)?.card;
+    if card.board_id != board_id {
+        bail!("card #{id} does not belong to the selected Board project");
+    }
+    Ok(card)
 }
 
 fn card_archive(ctx: &mut Ctx, id: i64, archived: bool) -> Result<()> {

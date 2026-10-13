@@ -8,8 +8,9 @@ Feature PRs target the long-lived `dev` branch; `main` is production (branch mod
 
 ## Development workflow (sandbox-first)
 
-Local test and development runs use the Docker sandbox by default:
-`./scripts/sandbox.sh gates` runs every gate and the live E2E suite in an isolated,
+Local test and development runs use the Docker sandbox by default. Use
+`./scripts/sandbox.sh check <mode>` for focused review checkpoints;
+`./scripts/sandbox.sh gates` runs every gate once on the final handoff tree in an isolated,
 network-disabled, non-root container with the worktree read-only (setup, modes, and
 troubleshooting: [`docs/sandbox.md`](docs/sandbox.md)). Do **not** run `cargo test`,
 `e2e/run-all.sh`/`e2e/ci.sh`, the TUI, or real-provider agent runs directly against the host
@@ -31,9 +32,8 @@ checklist. Host-side execution is an explicit, documented exception only.
 
 Ownership is strict: edit your crate(s) + append to root `[workspace.dependencies]`. Semantics
 source of truth: `docs/protocol.md` + `docs/design.md`. Docs live in `docs/` (index: `docs/README.md`);
-`schema.sql` is the fresh-schema source of truth and `board-core::db` owns upgrades. Final compatibility
-schema v15
-live catalog is `e2e/README.md` (scenarios 01–39); `e2e/test-harness.sh` is the provider-free static
+`schema.sql` is the fresh-schema source of truth and `board-core::db` owns upgrades. Current
+schema is v17. The live catalog is `e2e/README.md` (scenarios 01–39); `e2e/test-harness.sh` is the provider-free static
 safety gate.
 
 ## Build / test gates (keep green)
@@ -42,7 +42,7 @@ The gate list has one maintained copy: **[`docs/README.md` → Test gates](docs/
 (mirrored by `.github/workflows/ci.yml`; `scripts/tests/test_docs.py` fails if the two drift).
 
 - The Python tier is a CI gate too (`ci.yml`'s `Python tests` step) and is easy to forget:
-  `scripts/tests/test_docs.py` pins the version matrix (schema v15, protocol 22, Herdr 0.9.0)
+  `scripts/tests/test_docs.py` pins the version matrix (schema v17, protocol 22, Herdr 0.9.0)
   and the exact `e2e/NN-*.sh` catalog, so adding a scenario or bumping the schema fails here
   until the docs and that test are updated together.
 

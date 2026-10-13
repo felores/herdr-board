@@ -9,7 +9,9 @@ use std::io::{self, Write};
 
 use anyhow::Result;
 use board_core::capability::HarnessCapabilities;
-use board_core::model::{Board, Card, Column, Comment, CommentHistory, CommentRecord};
+use board_core::model::{
+    Board, Card, Column, Comment, CommentHistory, CommentRecord, IssueAuditEntry,
+};
 use board_core::protocol::{
     BoardSnapshot, CardDetail, DaemonStatus, ProjectDetail, ProjectListResult, ProjectOpenResult,
     SessionListResult, SpaceListResult,
@@ -328,6 +330,14 @@ impl Render for CardDetail {
         } else if let Some(session) = &self.card.session {
             writeln!(out, "session: {session}")?;
         }
+        if let Some(issue) = &self.card.source_issue {
+            writeln!(
+                out,
+                "issue: {}#{} ({})",
+                issue.identity.repository, issue.identity.number, issue.identity.url
+            )?;
+            writeln!(out, "observed: {} (not delivery proof)", issue.observed_at)?;
+        }
         if !self.card.description.is_empty() {
             writeln!(out, "\n{}", self.card.description)?;
         }
@@ -410,6 +420,24 @@ impl Render for Vec<CommentHistory> {
             )?;
         }
         Ok(())
+    }
+}
+
+impl Render for Vec<IssueAuditEntry> {
+    fn render(&self, out: &mut dyn Write) -> io::Result<()> {
+        let rows: Vec<Vec<String>> = self
+            .iter()
+            .map(|entry| {
+                vec![
+                    format!("#{}", entry.id),
+                    entry.action.clone(),
+                    entry.old_node_id.clone().unwrap_or_else(|| "-".into()),
+                    entry.new_node_id.clone().unwrap_or_else(|| "-".into()),
+                    entry.changed_at.clone(),
+                ]
+            })
+            .collect();
+        table(out, &rows)
     }
 }
 

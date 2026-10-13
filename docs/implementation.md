@@ -22,15 +22,13 @@ in root Cargo.toml. Never edit another crate. Phase A creates all five crates co
 
 ## Contract versions and source ownership
 
-The final compatibility matrix is: board protocol **v1**, SQLite schema **v15**, and exactly
+The final compatibility matrix is: board protocol **v1**, SQLite schema **v16**, and exactly
 Herdr **0.9.0 / socket protocol 22**. The versioned source of truth is `schema.sql` for fresh
 SQLite databases and `board-core::db` migrations for upgrades; `board-core::protocol` owns the
 board wire DTOs; `board-herdr` owns only the verified Herdr socket surface; and `docs/design.md`
-and `docs/protocol.md` explain behavior rather than defining duplicate serde shapes. Schema v15 adds
-projects (canonical-path identity, Global as the special project), per-project named boards,
-persistent selection, and capped recency on top of v13's soft-deleted comments and immutable
-comment-history snapshots; the CLI exposes the project/board subcommands while boardd remains the
-sole SQLite writer. The complete live use-case catalog
+and `docs/protocol.md` explain behavior rather than defining duplicate serde shapes. Schema v16 adds
+prompt-excluded evidence and exact blocked-question decisions on top of the v14 project model and
+v15 archive state; boardd remains the sole SQLite writer. The complete live use-case catalog
 is [`../e2e/README.md`](../e2e/README.md), scenarios **01–39** (through `e2e/39-managed-slow-provider.sh`); the safe
 static harness is `e2e/test-harness.sh`, while `e2e/run-all.sh` is the opt-in live gate.
 
@@ -104,7 +102,8 @@ pub(crate) fn rescue_run_pane(plan: &RescuePlan<'_>) -> Result<RescueOutcome>;
 ## Semantics source of truth
 
 `docs/protocol.md` + `docs/design.md` §5–§8. `schema.sql` at repo root is the current fresh schema
-(embedded and versioned with `PRAGMA user_version`). Schema v14 is current. v8 adds the partial
+(embedded and versioned with `PRAGMA user_version`). Schema v17 is current: optional typed GitHub
+Issue identity lives on cards with active-card uniqueness and a separate binding audit. v8 adds the partial
 unique index `idx_runs_one_open_per_card` and transactional enqueue/promotion/finalization units of
 work. v9 adds nullable durable timeout deadline/pause timestamps. Promotion writes the deadline in
 its transaction; awaiting pause/resume updates the card and timeout atomically and idempotently,

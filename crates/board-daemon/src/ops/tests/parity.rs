@@ -31,6 +31,11 @@ use crate::ops::ROUTED_METHODS;
 const KNOWN_UNIMPLEMENTED: &[&str] = &[
     "daemon.status",
     "daemon.stop",
+    "decision.get",
+    "decision.open",
+    "decision.receipt",
+    "evidence.get",
+    "evidence.put",
     "harness.capabilities",
     "harness.list",
     "run.cancel",

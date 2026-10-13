@@ -61,12 +61,28 @@ fn pending_create_card(db: &Db, p: &CardCreateParams) -> Result<Card> {
         created_at: String::new(),
         updated_at: String::new(),
         archived_at: None,
+        source_issue: None,
         // Stamped daemon-side with resolved display labels at serve time.
         labels: board_core::protocol::CardLabels::default(),
     })
 }
 
 pub(super) fn card_create(d: &Arc<Daemon>, p: CardCreateParams) -> Result<Value> {
+    card_create_inner(d, p, None)
+}
+
+pub(super) fn card_create_bound(
+    d: &Arc<Daemon>,
+    p: board_core::protocol::BoundCardCreateParams,
+) -> Result<Value> {
+    card_create_inner(d, p.card, Some(p.issue))
+}
+
+fn card_create_inner(
+    d: &Arc<Daemon>,
+    p: CardCreateParams,
+    issue: Option<board_core::model::IssueIdentity>,
+) -> Result<Value> {
     let harness = p.harness.as_deref().unwrap_or(DEFAULT_HARNESS);
     validate_card_values(
         harness,
@@ -112,29 +128,58 @@ pub(super) fn card_create(d: &Arc<Daemon>, p: CardCreateParams) -> Result<Value>
         }
     }
 
-    let (mut card, enqueue) = {
+    let (mut card, enqueue, created) = {
         // Scheduler state and card creation/enqueue share one critical
         // section. The DB UoW below contains no Herdr or process I/O.
         let mut _sched = d.sched.lock().unwrap();
         let db = d.store.lock();
-        let pending = pending_create_card(&db, &p)?;
-        let column = db.require_column(pending.column_id)?;
-        let entry = decide_entry(&column, pending.status, false);
-        if entry.enqueue {
-            let prepared = prepare_enqueue_values(d, &db, &pending, pending.column_id, false)?;
-            let (card, _run) = db.create_card_and_enqueue_uow(&p, &prepared.borrowed())?;
-            _sched.chain_hops.remove(&card.id);
-            (card, true)
+        let existing = issue
+            .as_ref()
+            .map(|i| db.active_card_for_issue(&i.node_id))
+            .transpose()?
+            .flatten();
+        if let Some(existing) = existing {
+            if existing.board_id != p.board_id.unwrap_or(BOARD_ID)
+                || p.column_id.is_some_and(|id| id != existing.column_id)
+                || existing.source_issue.as_ref().map(|i| &i.identity) != issue.as_ref()
+            {
+                return Err(Error::InvalidState(
+                    "Issue is already selected elsewhere or its identity changed; reconcile explicitly".into(),
+                ));
+            }
+            (existing, false, false)
         } else {
-            (db.create_card(&p)?, false)
+            let pending = pending_create_card(&db, &p)?;
+            let column = db.require_column(pending.column_id)?;
+            let entry = decide_entry(&column, pending.status, false);
+            if issue.is_some() && entry.enqueue {
+                return Err(Error::InvalidState(
+                    "select an Issue in a manual column before dispatch".into(),
+                ));
+            }
+            if entry.enqueue {
+                let prepared = prepare_enqueue_values(d, &db, &pending, pending.column_id, false)?;
+                let (card, _run) = db.create_card_and_enqueue_uow(&p, &prepared.borrowed())?;
+                _sched.chain_hops.remove(&card.id);
+                (card, true, true)
+            } else {
+                let card = if let Some(issue) = issue.as_ref() {
+                    db.create_bound_card(&p, issue)?
+                } else {
+                    db.create_card(&p)?
+                };
+                (card, false, true)
+            }
         }
     };
 
-    d.emit_changed(
-        BoardChangedReason::CardCreated,
-        Some(card.id),
-        Some(card.column_id),
-    );
+    if created {
+        d.emit_changed(
+            BoardChangedReason::CardCreated,
+            Some(card.id),
+            Some(card.column_id),
+        );
+    }
     if enqueue {
         d.wake_dispatch();
     }

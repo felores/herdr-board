@@ -44,7 +44,7 @@ protocol version.
 
 boardd requires **Herdr socket protocol 22** (Herdr 0.9.0 is the reference version; compatible
 later releases such as 0.9.1 are accepted with a version warning). The board protocol remains v1
-and the SQLite schema remains v15; neither version is the upstream Herdr socket contract. Because
+and the SQLite schema is v17; neither version is the upstream Herdr socket contract. Because
 the daemon opens a fresh Herdr request connection per operation, the compatibility probe is
 repeated at each operation boundary rather than treated as a one-time startup check:
 
@@ -235,8 +235,40 @@ A card selects a **herdr session** (`session`, `null` = the daemon's default ses
       canonical form is ever stored. The same CLI spelling applies to `card edit --space-kind`, whose
       omitted flag leaves the kind unchanged.
   - creating directly into an `auto` column dispatches immediately (same as move)
+- `card.create_bound {card: CardCreateParams, issue: IssueIdentity}` → `Card`. The Issue identity
+  holds immutable GitHub Issue/repository node IDs and current `OWNER/REPO`, number, and canonical
+  URL. This is a separate additive RPC: legacy `card.create` and unbound cards remain unchanged.
+  An Issue needs a repository-scoped project and a manual destination column. Creating the card
+  and recording its binding is one SQLite write; an identical selection of the same active card,
+  board, column, and identity returns that card without another event or run. Another active card
+  with the same node ID is forbidden by a partial unique index. Archived cards keep their
+  binding and audit; a conflicting restore fails. Issue-bound cards cannot cross project Git roots
+  until explicitly unlinked. Duplication does not copy an Issue binding.
+- `card.issue.bind {card_id, issue}` → `Card`; `card.issue.refresh {card_id, issue}` → `Card`;
+  `card.issue.unlink {id}` → `Card`; `card.issue.history {id}` → `[IssueAuditEntry…]`. Bind only
+  unbound cards, refresh only the same immutable node ID, and unlink before any rebind to a new
+  ID. All identity changes are audited independently of comments/prompts. Open work prevents a
+  binding change. `unlink` is idempotent; the CLI requires `--yes` for it. The CLI resolves Issues
+  through an authenticated, writable `gh` repository and matches a push remote to the selected
+  project's exact Git root. A raw socket caller can still assert an identity: neither this link
+  nor `observed_at` authorizes GitHub closure or Harness verification.
+  `board card issue inspect ID --json` is a CLI-only read projection for one selected bound
+  card: `card` (Board id, board id, project scope, status, archive timestamp, open run ids),
+  `binding` (Board-stored identity and observation time), `issue` (GitHub identity, state,
+  observation epoch seconds or `unknown`/null), `diagnostics`, `checked_at_epoch_seconds`,
+  and `verification`/`delivery` fixed at `not_assessed`. No write or backlog import occurs.
+  A null GitHub node is `missing_or_inaccessible`, never a definitive deletion. A failed
+  lookup is `github_unavailable`; repository-ID change is `transferred` plus
+  `repository_mismatch`, while rename and number change are separate diagnostics.
+  A closed Issue with an unfinished run is `closed_with_open_run`. Consumers must use the
+  timestamp and source before claiming freshness, and cannot derive verified/delivered from
+  client-declared `evidence.put` or card status. Portfolio joins its own Issue/Herdr/ledger
+  reads by authority; it does not infer a Board run for an unbound Issue or an external pane.
+  Verification is sourced from the repository Harness ledger, delivery from Git/GitHub;
+  neither is projected from Board evidence. A future Board-origin verification signal needs
+  a separately approved authenticated-origin contract, not a trusted `producer` string.
   - In the legacy v1→v2 migration, `cwd`/`worktree` kinds and `worktree_base` were removed;
-    current schema v15 treats worktree isolation as the agent's job via prompt instructions, not a
+    current schema v17 treats worktree isolation as the agent's job via prompt instructions, not a
     board concept. Existing databases migrate those cards to `workspace` (best effort,
     `space_ref` kept).
 - `card.update {id, …subset}` → `Card`; nullable update fields use the tri-state encoding below. Harness/model/effort/permission/session/space fields are refused while the card has an open run (`queued|running|blocked|awaiting`). Title/description remain editable; `done` is not open.
@@ -296,6 +328,28 @@ A card selects a **herdr session** (`session`, `null` = the daemon's default ses
   insert creates the initial snapshot; edits append a snapshot; deletion marks the final snapshot's
   `deleted_at` without changing its body. System comments are immutable at the database boundary and
   cannot be edited or deleted by any actor.
+- `evidence.put {card_id, producer, dedupe_key, schema, payload}` → `Evidence`. The unique key is
+  `(card_id, producer, dedupe_key)`. Identical replay returns the existing row; a changed schema or
+  payload conflicts. The response includes a stable numeric id and `sha256:` payload hash. Evidence
+  is stored separately from comments, is absent from prompt snapshots, and never changes card,
+  column, or run lifecycle. `producer` and any payload status are client claims, not authenticated
+  origin or verified outcomes. Do not use them to authorize delivery, close an Issue, or mark a
+  Harness feature verified. `payload` must be an object and is bounded to 64 KiB.
+- `evidence.get {card_id, producer, dedupe_key}` → `Evidence`. This reconciles an ambiguous
+  publisher timeout by the same key.
+- `decision.open {board_id, card_id, run_id, question_hash, target}` → `DecisionOccurrence`.
+  The card must be blocked and the run must be open with the exact session, workspace, and pane.
+  The target additionally binds machine, terminal, and agent-session identity. Identical replay
+  returns the same **open** occurrence; a changed question or target supersedes it. A delivered
+  occurrence is never reused: a later block with the same question opens a new occurrence.
+- `decision.receipt {decision_id, delivery_id, target_fingerprint, answer_hash, status:"accepted", receipt_signature}`
+  → `DecisionOccurrence`. Only an exact accepted Shepherdr receipt atomically marks the occurrence
+  delivered and changes the same blocked card to `running`. Unknown, stale, superseded, changed,
+  forged, or cross-run receipts fail closed. `receipt_signature` is an HMAC-SHA256 capability over
+  the exact receipt fields, verified with the shared `BOARD_RECEIPT_KEY`; missing or malformed
+  verification configuration fails closed. Identical replay returns the delivered occurrence.
+- `decision.get {decision_id}` → `DecisionOccurrence`. This supports restart and ambiguous
+  acknowledgement reconciliation without replaying the answer.
 - `run.done {card_id, outcome:"ok"|"fail", summary?, run_id?, actor_pane_id?}` → `{run, card}` —
   backend of `board done`. `run_id` is optional for compatibility: manual and TUI callers may omit
   it, and an omitted id completes the current active run. When supplied, it ordinarily must exactly
@@ -566,7 +620,7 @@ Coarse by design — the TUI refetches only its selected `board.get {board_id}` 
     - harness session: resume `card.session_id` unless `column.fresh_session` or none. Pi mint/resume use exact `--session-id`; Pi retry forks old → a newly minted target id. Claude retains mint/`--resume`/`--fork-session`. Codex Mint takes **no session flag** (it mints its own thread id and the enqueued run persists `session_id=NULL` — the board never invents a uuid); codex resume/fork are `resume <id>` / `fork <id>` subcommands appended last to the startup argv. OpenCode Mint also takes **no session flag** (the TUI mints its own `ses_…` id and the enqueued run persists `session_id=NULL`); opencode resume/fork are trailing session flags `-s <id>` / `-s <id> --fork`. Existing cards keep their stored harness/session.
    - **preflight before workspace mutation:** `ping` the selected socket and require socket protocol 22. Only then resolve `workspace` by id/case-insensitive label, or resolve `new_workspace` by label and, if absent, call `workspace.create {label,cwd,focus:false}`. Read the workspace cwd from its pane snapshot; snapshot failure or missing live cwd fails dispatch, never falling back to process cwd or a stale snapshot. When this dispatch itself created the workspace, its exact initial tab/root pane ids travel as a one-shot bootstrap hint: the first card-tab allocation verifies them (tab exists in that workspace, root is the tab's sole pane, root carries no agent), renames the tab to `card-<id>` and the root to `card-<id>-anchor`, and splits the run child from that root — so a daemon-created workspace has no unused initial tab. Any verification mismatch falls back to a fresh `tab.create` and never touches that root; reused/existing/user workspaces never carry a hint.
    - **preflight again at the spawner boundary:** this is the spawner's first protocol call, before placement, managed launch, or the configured runner.
-   - build the run-child env `{BOARD_CARD_ID,BOARD_RUN_ID,BOARD_SOCKET,BOARD_BIN}` plus configured-harness prompt env. Current schema v15 runs place each card in a stable short `card-<id>` tab whose root is a shell anchor labeled `card-<id>-anchor`. The anchor receives only stable card identity; every run child is created by `pane.split` from it with the complete run cwd/env. Promotion persists the exact anchor id with the run **except** for managed launches, whose anchor is closed after a successful launch (see below), leaving the tab with exactly the harness pane and a NULL persisted anchor. The daemon reuses only exact tab/anchor identities reconstructed from the newest matching durable panes in the same session/workspace; labels are display metadata, never ownership. A renamed anchor remains selected by identity; a closed anchor is recreated only by splitting a currently live durable board child, otherwise a fresh tab is created. Same-conversation reuse eligibility is checked **before** anchor selection, so an anchorless managed tab still reuses its exact prior harness pane on the next hop. The initial split targets ratio `0.40` and clamps it on narrow terminals so the anchor remains reusable; later splits use layout geometry. Both fresh and recovered placement fail closed unless the live layout can provide a 24x6 anchor and a 12x8 child. Concurrent first allocations for one `(session,workspace,card)` key are serialized; if multiple historical panes are live, newest run id wins. Legacy rows retain the historical `kanban` lookup. Thus cwd/env/placement exist **before** launch; pane-first `agent.start` receives none of them and never receives the anchor pane id.
+   - build the run-child env `{BOARD_CARD_ID,BOARD_RUN_ID,BOARD_SOCKET,BOARD_BIN}` plus configured-harness prompt env. Current schema v17 runs place each card in a stable short `card-<id>` tab whose root is a shell anchor labeled `card-<id>-anchor`. The anchor receives only stable card identity; every run child is created by `pane.split` from it with the complete run cwd/env. Promotion persists the exact anchor id with the run **except** for managed launches, whose anchor is closed after a successful launch (see below), leaving the tab with exactly the harness pane and a NULL persisted anchor. The daemon reuses only exact tab/anchor identities reconstructed from the newest matching durable panes in the same session/workspace; labels are display metadata, never ownership. A renamed anchor remains selected by identity; a closed anchor is recreated only by splitting a currently live durable board child, otherwise a fresh tab is created. Same-conversation reuse eligibility is checked **before** anchor selection, so an anchorless managed tab still reuses its exact prior harness pane on the next hop. The initial split targets ratio `0.40` and clamps it on narrow terminals so the anchor remains reusable; later splits use layout geometry. Both fresh and recovered placement fail closed unless the live layout can provide a 24x6 anchor and a 12x8 child. Concurrent first allocations for one `(session,workspace,card)` key are serialized; if multiple historical panes are live, newest run id wins. Legacy rows retain the historical `kanban` lookup. Thus cwd/env/placement exist **before** launch; pane-first `agent.start` receives none of them and never receives the anchor pane id.
    - managed Pi/Claude: create a mode-`0600` file containing the snapshotted system prompt; call `agent.start {name,kind,pane_id,args,timeout_ms:30000}` on the newly split child with prompt-free startup args and the harness-specific file flag. A typed `agent_pane_busy` response is treated as a bounded transient on that same child: retry the exact same request on the same pane at most five times, with 100ms backoff doubling per retry (100/200/400/800/1600ms — long enough for a slow login shell to reach its prompt); do not split or allocate another pane. Persistent busy is terminal and follows child-only cleanup, leaving the anchor. This is distinct from `pane_not_found`, which is a placement race: close the child when present, rediscover from `tab.list`, and retry complete placement once. Poll `agent.get {target:pane_id}` for at most 30s until `interactive_ready && !launch_pending`; then (this is a two-stage readiness contract) for pi/claude poll `agent.get` until `agent_session` carries a non-empty value — at most 5 probes spread over 10s; a timeout degrades with a warning and proceeds, never blocking launch (self-minting harnesses skip this stage: their session id is minted by the first prompt). Call `agent.prompt {target:pane_id,text:prompt_snapshot}`, retrying the exact same request only on a typed `agent_pane_busy` refusal (at most five times, 100ms backoff doubling, pane re-checked interactive between attempts — every other error propagates immediately so a prompt that may have landed is never re-sent), then start a bounded delivery confirmation poll on a detached diagnostics connection (5 probes over 10s; leaves-idle or session-appears/changes confirms; on timeout log a distinct dropped-prompt-suspect warning, never re-send). The poll never delays spawn return, run promotion, or an early `board done`. Remove the prompt file before returning, including error paths.
     - managed self-minting harnesses (codex, opencode, and antigravity): the same `agent.start` readiness contract **without any prompt file** — none of the three has a system-prompt-file equivalent, so startup argv carries neither system nor task text and there is no `--` delimiter. After readiness the daemon runs a **bounded post-launch capture** on the same gated connection: it polls `agent.get` (at most 5 probes, 10s wall-clock cap) for `AgentInfo.agent_session`, and accepts only an `id`-kind reference owned by the expected agent with a non-empty `value` — for codex the source is deliberately unconstrained, while opencode and antigravity pin the exact source the current Herdr integration reports. The capture is ordered per harness: for **codex** it runs before the prompt (the integration reports its thread id as soon as the CLI is interactive); for **opencode and antigravity** it runs **after** the prompt — real OpenCode mints its `ses_…` id and reports `agent_session` only once the first `agent.prompt` lands, so a pre-prompt capture would lose the id, while a prompt-less opencode rescue reduces to capture-after-readiness (antigravity is ordered like opencode — see the launch spec below). A missing, wrong-agent, wrong-source, `path`-kind, or blank report degrades to `None` with a warning and the launch **continues**: basic execution works, but the run keeps its enqueue-time `NULL` id, so same-conversation reuse hops and `run.focus` rescue fail closed (no recorded id). A captured id is persisted atomically **with** the run promotion (run + card in one transaction), so a cancel-during-spawn that ends the run discards the capture together with the handle; a capture racing promotion writes through the same single-row UoW and fails closed if the run is no longer open. Then `agent.prompt` delivers the prompt (before the capture for codex, after it for opencode and antigravity): a Mint receives one delimited block (`## herdr-board system instructions` + `## herdr-board card task`), a resume/fork fresh pane receives the task alone, same-pane reuse the task alone, and a rescue sends nothing. **After a successful managed launch** (fresh or reuse), the daemon closes the tab anchor with `pane.close` — closing a split parent is live-verified safe, and the harness pane keeps its process/env — so the tab converges to exactly one harness pane; the promoted run persists a NULL anchor. If that close fails, the anchor is kept (and persisted) rather than failing the already-successful launch. A failed launch never closes the anchor: it remains for the next allocation, per the child-only cleanup rule.
    - managed pane name is `card-<id>-<column-slug>` (e.g. `card-14-execute`); `agent_name_taken` retries once on the same pane with `card-<id>-<column-slug>-r<run>`.

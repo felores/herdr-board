@@ -19,8 +19,9 @@ the thin policy + routing layer on top of it; it does not duplicate the guide.
 
 ## 1. Hard rules (never negotiate)
 
-1. Every local test run goes through the sandbox:
-   `./scripts/sandbox.sh gates`. Do NOT run `cargo test`, `e2e/run-all.sh`,
+1. Every local test run goes through the sandbox. During implementation use
+   `./scripts/sandbox.sh check <mode>`, and run `./scripts/sandbox.sh gates`
+   once on the final handoff tree. Do NOT run `cargo test`, `e2e/run-all.sh`,
    `e2e/ci.sh`, the TUI, or real-provider agent runs directly against the host.
 2. The host is never a test or run target for this repository's own state:
    no host `BOARD_*`, `HERDR_*`, or provider variables are forwarded, no host
@@ -41,12 +42,20 @@ the thin policy + routing layer on top of it; it does not duplicate the guide.
 If a task would violate a rule, stop and do the sandbox form instead; the
 sandbox path is strictly safer and strictly equivalent in coverage.
 
-## 2. One-command edit-test loop
+## 2. Interactive checkpoints and final gate
 
 ```bash
 ./scripts/sandbox.sh prepare   # once per worktree: image, volumes, dependency fetch (only network step)
-./scripts/sandbox.sh gates     # the full deterministic suite, offline
+./scripts/sandbox.sh check rust <test-filter>  # focused checkpoint
+./scripts/sandbox.sh check python test_sandbox.py
+./scripts/sandbox.sh gates     # one final full suite before handoff
 ```
+
+During user-guided review, batch small edits and inspect them directly. Do not
+run a test after every adjustment. At an explicit review checkpoint, run the
+smallest focused sandbox check that covers the changed seam. Run the full gate
+once before handoff. A fully reverted change with a clean repository owes no
+gate.
 
 `gates` runs, in order, and **stops at the first failing gate, naming it**
 (non-zero exit): safety self-check → `cargo fmt --all --check` → clippy
@@ -118,6 +127,7 @@ runs only inside the sandbox; nothing reaches the host provider config.
 ./scripts/sandbox.sh selfcheck            # in-container isolation proof (also gate 0 of gates)
 ./scripts/sandbox.sh reset --target       # drop build output only
 ./scripts/sandbox.sh reset --all          # volumes + image for this worktree
+./scripts/sandbox.sh prune                # remove labeled deleted-worktree volumes only
 ./scripts/sandbox.sh lock                 # regenerate Cargo.lock (network, single-file write-back)
 ./scripts/sandbox.sh down                 # stop the environment container
 ./scripts/sandbox.sh doctor               # diagnose docker/sandbox resources
