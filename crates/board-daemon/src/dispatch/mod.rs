@@ -89,3 +89,94 @@ pub(crate) fn map_harness_err(e: HarnessError) -> Error {
         ),
     }
 }
+
+fn effect_socket(
+    d: &std::sync::Arc<crate::state::Daemon>,
+    herdr_session: &str,
+) -> Option<std::path::PathBuf> {
+    if herdr_session == "default" {
+        None
+    } else {
+        d.session_registry.as_ref().and_then(|registry| {
+            registry
+                .resolve(Some(herdr_session))
+                .ok()
+                .map(|resolved| resolved.socket)
+        })
+    }
+}
+
+/// Execute durable exact-tab rename and close effects. Failed/uncertain
+/// effects remain in the outbox for the next supervisor pass; close Gone is
+/// an idempotent success.
+pub(crate) fn process_runtime_effects(d: &std::sync::Arc<crate::state::Daemon>) {
+    let renames = match d.store.lock().pending_runtime_renames() {
+        Ok(effects) => effects,
+        Err(error) => {
+            tracing::warn!(error = %error, "loading runtime rename effects failed");
+            return;
+        }
+    };
+    for effect in renames {
+        let socket = effect_socket(d, &effect.herdr_session);
+        if effect.herdr_session != "default" && socket.is_none() {
+            let _ = d.store.lock().fail_runtime_effect(
+                &effect.effect_id,
+                "named Herdr session is unavailable during rename reconciliation",
+            );
+            continue;
+        }
+        match d.spawner.rename_card_tab(
+            socket.as_deref(),
+            &effect.workspace_id,
+            &effect.tab_id,
+            &effect.label,
+        ) {
+            Ok(()) => {
+                if let Err(error) = d.store.lock().acknowledge_runtime_rename(&effect) {
+                    tracing::warn!(effect_id = %effect.effect_id, error = %error, "acknowledging tab rename failed");
+                }
+            }
+            Err(error) => {
+                let _ = d
+                    .store
+                    .lock()
+                    .fail_runtime_effect(&effect.effect_id, &format!("{error:#}"));
+            }
+        }
+    }
+
+    let effects = match d.store.lock().pending_runtime_closes() {
+        Ok(effects) => effects,
+        Err(error) => {
+            tracing::warn!(error = %error, "loading runtime close effects failed");
+            return;
+        }
+    };
+    for effect in effects {
+        let socket = effect_socket(d, &effect.herdr_session);
+        if effect.herdr_session != "default" && socket.is_none() {
+            let _ = d.store.lock().fail_runtime_close(
+                &effect.effect_id,
+                "named Herdr session is unavailable during close reconciliation",
+            );
+            continue;
+        }
+        match d
+            .spawner
+            .close_card_tab(socket.as_deref(), &effect.workspace_id, &effect.tab_id)
+        {
+            Ok(()) => {
+                if let Err(error) = d.store.lock().acknowledge_runtime_close(&effect.effect_id) {
+                    tracing::warn!(effect_id = %effect.effect_id, error = %error, "acknowledging tab close failed");
+                }
+            }
+            Err(error) => {
+                let _ = d
+                    .store
+                    .lock()
+                    .fail_runtime_close(&effect.effect_id, &format!("{error:#}"));
+            }
+        }
+    }
+}

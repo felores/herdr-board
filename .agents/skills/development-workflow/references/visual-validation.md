@@ -21,8 +21,8 @@ no-WezTerm-CLI capture helper is `pty-capture.py`.
    board; do not duplicate the general CLI/TUI reference here.
 2. Verify the installed Herdr with `herdr --version`, `herdr status`,
    `herdr api schema --json`, and relevant `--help`; never guess command
-   shapes. In the sandbox this is the pinned, build-time-verified Herdr 0.8.0
-   (protocol 19) baked into the image.
+   shapes. In the sandbox this is the pinned, build-time-verified Herdr 0.9.0
+   (protocol 22) baked into the image.
 3. Mutate only an ephemeral named Herdr session and workspaces created inside
    it. Prefix every mutation log with `HERDR MUTATION:`.
 4. **ALWAYS isolate board state — DB, socket, AND daemon.** Route A isolates by

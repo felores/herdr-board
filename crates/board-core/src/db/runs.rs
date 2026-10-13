@@ -41,6 +41,7 @@ impl Db {
                     p.system_prompt_snapshot,p.launch_spec_json,p.session_id,p.session],
         )?;
         let id = tx.last_insert_rowid();
+        Db::record_runtime_enqueue_tx(tx, card_id, id, p.column_id)?;
         self.lifecycle_fault(LifecycleFaultPoint::EnqueueAfterRunInsert)?;
         let changed = tx.execute(
             "UPDATE cards SET status='queued',awaiting_reason=NULL,session_id=COALESCE(?2,session_id),updated_at=datetime('now') WHERE id=?1",
@@ -294,14 +295,17 @@ impl Db {
                     next.session
                 ],
             )?;
+            let next_id = tx.last_insert_rowid();
+            Db::record_runtime_enqueue_tx(&tx, card_id, next_id, next.column_id)?;
             tx.execute(
                 "UPDATE cards SET status='queued',awaiting_reason=NULL WHERE id=?1",
                 params![card_id],
             )?;
-            Some(tx.last_insert_rowid())
+            Some(next_id)
         } else {
             None
         };
+        Db::plan_runtime_close_tx(&tx, card_id, p.run_id, next_id)?;
         tx.commit()?;
         Ok(FinalizeEffects {
             card: self.require_card(card_id)?,

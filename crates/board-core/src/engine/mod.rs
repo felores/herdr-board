@@ -4,6 +4,7 @@
 
 pub mod archive;
 mod columns;
+mod controller;
 mod lifecycle;
 mod signals;
 mod transitions;
@@ -14,6 +15,13 @@ pub use archive::{
     decide_project_archive, ArchivedDestination, BoardArchiveRejection, ProjectArchiveRejection,
 };
 pub use columns::resolve_column;
+pub use controller::{
+    classify_review, decide_tab_policy, order_controller_events, plan_recovery, reduce_controller,
+    select_candidate, AggregateRole, Candidate, ControllerAggregate, ControllerEvent,
+    ControllerEventEnvelope, ControllerReduction, EffectIntent, EventOrderError, GateDecision,
+    Observation, PendingGate, ReceiptOutcome, RecoveryCase, RecoveryPlan, ReviewClass, ReviewNote,
+    ReviewNoteMarker, TabPolicy, WorkState,
+};
 pub use lifecycle::{
     decide_lifecycle, FinalizePlan, LifecycleAction, LifecycleDecision, LifecycleFacts,
     LifecycleHarness, LifecycleRejection,

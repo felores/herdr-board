@@ -91,7 +91,7 @@ fn tolerates_protocol_19_workspace_reordered_event_as_other() {
 
 #[test]
 fn tolerates_protocol_19_additive_status_fields() {
-    // Additive protocol-19 metadata must not be required by the client model.
+    // Additive protocol-22 metadata must not be required by the client model.
     let line = r#"{"event":"pane_agent_status_changed","data":{"type":"pane_agent_status_changed","pane_id":"p","workspace_id":"w","agent_status":"working","agent":"pi","display_agent":"Pi","title":"Build","state_labels":{"phase":"coding","priority":"high"},"future_field":true}}"#;
     match parse_event_line(line).expect("event") {
         HerdrEvent::AgentStatusChanged {

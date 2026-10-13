@@ -1,8 +1,8 @@
 # herdr-board sandbox image.
 #
 # Everything is pinned: the base image by digest (Rust 1.97.0 on Debian
-# bookworm slim), the Herdr 0.8.2 release asset by SHA-256 per architecture,
-# and the socket protocol by a build-time check (must be exactly 19).
+# bookworm slim), the Herdr 0.9.0 release asset by SHA-256 per architecture,
+# and the socket protocol by a build-time check (must be exactly 22).
 #
 # Build: docker build --platform linux/<amd64|arm64> -t <tag> docker/
 # The sandbox wrapper (scripts/sandbox.sh) is the supported entry point.
@@ -26,19 +26,19 @@ RUN apt-get update \
 # fmt/clippy components for the pinned toolchain (no-op when present).
 RUN rustup component add clippy rustfmt
 
-# Herdr 0.8.2 — one pinned release asset per architecture, verified by
-# SHA-256, exact version string, and socket protocol 20 before the image can
+# Herdr 0.9.1 — one pinned release asset per architecture, verified by
+# SHA-256, exact version string, and socket protocol 22 before the image can
 # be produced. Mirrors the pins enforced by e2e/ci.sh (x86_64) and extends
 # them to aarch64 with the upstream-published digest.
-ENV HERDR_VERSION=0.8.2
-ENV HERDR_PROTOCOL=20
+ENV HERDR_VERSION=0.9.1
+ENV HERDR_PROTOCOL=22
 RUN set -eu; \
   arch="${TARGETARCH:-$(uname -m)}"; \
   case "$arch" in \
     x86_64|amd64) asset=herdr-linux-x86_64; \
-      sha=976150a14d490c94b243ea2e1a7eb2dfb67f12e36b182db90936f6728e6aecf4 ;; \
+      sha=2a02fed16beb651ef006e1d43f048f652ca4dc58ad053cd2d44450563d5c54b7 ;; \
     aarch64|arm64) asset=herdr-linux-aarch64; \
-      sha=f55610658e1c2e0d2aaef730b4b2ab885f7f8ba00285ab372bfb14f2e3d5b40d ;; \
+      sha=f4ccf4de745f2cb9a39a983e9ba3703dad50ec2a58dea83026ceab721bbd8d9e ;; \
     *) echo "unsupported architecture: $arch" >&2; exit 1 ;; \
   esac; \
   curl --fail --location --silent --show-error \

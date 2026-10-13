@@ -1,6 +1,6 @@
 //! Read-only integration tests against a *live* herdr socket.
 //!
-//! `#[ignore]` by default. Run with Herdr 0.8.0 / protocol 19 running:
+//! `#[ignore]` by default. Run with Herdr 0.9.1 / protocol 22 running:
 //!   cargo test -p board-herdr -- --ignored
 //! They self-skip (pass trivially) if no compatible socket is present, so the
 //! ignored run is safe on machines without the supported Herdr.

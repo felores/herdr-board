@@ -123,7 +123,7 @@ jobs:
             # Stage exactly what the tool writes. This list used to be repeated
             # here, and when `apply` grew the install-ref repin the extra files
             # were rewritten on the runner and then dropped at `git add`, so
-            # v0.9.1 was cut with stale `--ref v0.9.0` pins.
+            # v0.9.1 was cut with stale `--ref v0.9.1` pins.
             python3 scripts/prepare-release.py --repo . files \
               | tr '\n' '\0' | xargs -0 --no-run-if-empty git add --
             git commit -m "chore(release): v$TARGET"

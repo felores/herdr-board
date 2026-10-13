@@ -5,6 +5,7 @@
 mod boards_columns;
 mod cards_comments;
 mod constraints;
+mod controller_runtime;
 mod migrations;
 mod projects;
 mod rows;
@@ -17,6 +18,10 @@ use rusqlite::Connection;
 use crate::model::{Card, Run};
 use crate::protocol::{AwaitingReason, CardStatus, RunOutcome};
 use crate::Result;
+
+pub use controller_runtime::{
+    RuntimeCloseEffect, RuntimeLaunch, RuntimeRenameEffect, RuntimeTopology,
+};
 
 /// Deterministic statement boundaries used by crash-atomicity tests. Hooks are
 /// opt-in per [`Db`] instance and receive no row or effect DTO.

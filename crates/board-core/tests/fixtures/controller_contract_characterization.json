@@ -1,0 +1,101 @@
+{
+  "schema": "board-controller-characterization/v1",
+  "architecture": {
+    "path": "/Users/felo/Documents/FeloVault/.scratchpad/2026-09-16-155940_contrato-orquestador-board.md",
+    "sha256": "9dc15b15988440ad8b2307f2d20af76431012db3c8c64a3e2764c0abbda4c722"
+  },
+  "phase": "characterization-tests",
+  "failures": [
+    {
+      "id": "material-work-bypassed-board",
+      "owner": "board-daemon",
+      "baseline": "Herdr can launch material work without a Board admission",
+      "target": "A material launch requires a durable Board admission tied to card and run identity",
+      "acceptance": ["A1"]
+    },
+    {
+      "id": "free-text-card-drift",
+      "owner": "board-core",
+      "baseline": "Card description and comments are free text rather than a reduced contract projection",
+      "target": "Structured references, digests, predicates and receipts render the operational description",
+      "acceptance": ["A2", "A10", "A15", "A17"]
+    },
+    {
+      "id": "async-state-display-drift",
+      "owner": "board-core",
+      "baseline": "Card, run, pane and tab display state are updated by separate paths",
+      "target": "One deterministic reducer commits projection changes and idempotent effects atomically",
+      "acceptance": ["A3", "A12", "A13", "A22"]
+    },
+    {
+      "id": "spawn-failure-counted-as-work",
+      "owner": "board-daemon",
+      "baseline": "A failed spawn finalizes the queued run as failed before prompt acknowledgement",
+      "target": "A pre-ack spawn failure is an interrupted attempt with bounded retry",
+      "acceptance": ["A4"]
+    },
+    {
+      "id": "dead-review-shell",
+      "owner": "board-daemon",
+      "baseline": "A dead review shell has no typed receipt-aware recovery transition",
+      "target": "A review without a receipt returns safely to Human Gate",
+      "acceptance": ["A5"]
+    },
+    {
+      "id": "approved-feedback-stalled",
+      "owner": "board-core",
+      "baseline": "Approved review feedback does not deterministically materialize successor work",
+      "target": "Receipts classify as approve-only, approve-with-follow-up, revision-required or reject",
+      "acceptance": ["A6", "A7", "A8", "A16"]
+    },
+    {
+      "id": "controller-returned-control",
+      "owner": "board-daemon",
+      "baseline": "Safe successor work can require a manual move or retry",
+      "target": "The controller advances eligible cards until a real gate or blocker",
+      "acceptance": ["A9", "A18"]
+    },
+    {
+      "id": "description-became-authority",
+      "owner": "board-core",
+      "baseline": "Editable description text is the launch prompt base",
+      "target": "A versioned structured contract is authority and human context remains non-reducible",
+      "acceptance": ["A10"]
+    },
+    {
+      "id": "readiness-was-manual",
+      "owner": "board-daemon",
+      "baseline": "Declared dependencies and external evidence have no controller watchdog evaluation",
+      "target": "A watchdog refreshes declared evidence without inventing cards or priority",
+      "acceptance": ["A11", "A14", "A17"]
+    }
+  ],
+  "invariants": {
+    "identity": [
+      "tab labels never prove ownership",
+      "card_id, run_id, tab_id and pane_id remain exact identities",
+      "pane names remain card based"
+    ],
+    "legacy": [
+      "cards without display codes keep card-<id>",
+      "pre-v11 kanban placement is not adopted or renamed heuristically"
+    ],
+    "workspace": [
+      "a descendant Git path resolves to its canonical repository root",
+      "launch cwd is the canonical root while task_path preserves scope",
+      "one active binding maps a session and repository root to one exact workspace"
+    ],
+    "human_gate": [
+      "a checkpoint binds request_id, question, options, artifact path, digest, effect and authority",
+      "approve, request-changes and block decisions are durable events",
+      "a decision applies only to the exact checkpoint revision and digest"
+    ]
+  },
+  "baseline_tests": [
+    "board-core::scope::git_subdirectory_resolves_to_canonical_root",
+    "board-daemon::spawner::card_tabs_reuse_exact_owned_id_and_ignore_duplicate_and_legacy_labels",
+    "board-daemon::dispatch::v11_placement_uses_run_session_while_legacy_uses_current_card_session",
+    "board-tui::enter_on_awaiting_detail_runs_done_and_refreshes_driver_state"
+  ],
+  "next_schema": 16
+}

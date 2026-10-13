@@ -511,7 +511,7 @@ class ManagedFileListTests(unittest.TestCase):
 
     The Prepare Release workflow stages the output of `files`. If the two ever
     disagree, a release is cut with some managed file silently left behind —
-    which is exactly how v0.9.1 shipped with stale `--ref v0.9.0` pins while
+    which is exactly how v0.9.1 shipped with stale `--ref v0.9.1` pins while
     `verify` still reported success.
     """
 

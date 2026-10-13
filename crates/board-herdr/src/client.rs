@@ -16,7 +16,7 @@ use crate::envelope::{Request, Response};
 use crate::error::{diagnostic_protocol_code, HerdrError, Result};
 use crate::params::{
     AgentPromptParams, AgentStartParams, AgentWaitParams, PaneRenameParams, PaneSplitParams,
-    TabCreateParams, TabRenameParams, WorkspaceCreateParams,
+    TabCloseParams, TabCreateParams, TabRenameParams, WorkspaceCreateParams,
 };
 use crate::transport::{self, connect_with_deadline, SocketDeadlines};
 use crate::types::{
@@ -255,7 +255,7 @@ impl HerdrClient {
     ///
     /// The argument is retained so existing clients continue to compile, but
     /// it is not a version selector: this crate supports only its exact pinned
-    /// Herdr 0.8.0 / protocol-19 contract. New callers should use
+    /// Herdr 0.8.0 / protocol-22 contract. New callers should use
     /// [`Self::require_supported_protocol`].
     #[deprecated(
         note = "use require_supported_protocol; the argument is retained only for source compatibility"
@@ -308,12 +308,17 @@ impl HerdrClient {
         self.call_field("tab.list", json!({ "workspace_id": workspace_id }), "tabs")
     }
 
-    /// Rename a tab by exact id (protocol-19 `tab.rename`). The response
+    /// Rename a tab by exact id (protocol-22 `tab.rename`). The response
     /// payload is deliberately ignored: the board only needs confirmation that
     /// the rename happened, and the result type is not part of the pinned
     /// success surface.
     pub fn tab_rename(&mut self, p: &TabRenameParams) -> Result<()> {
         self.call("tab.rename", serde_json::to_value(p)?)?;
+        Ok(())
+    }
+
+    pub fn tab_close(&mut self, p: &TabCloseParams) -> Result<()> {
+        self.call("tab.close", serde_json::to_value(p)?)?;
         Ok(())
     }
 
@@ -391,7 +396,7 @@ impl HerdrClient {
     /// `pane_not_found` error envelope, which is a *negative answer* to a
     /// liveness question rather than a failure, so it is modelled as `None`
     /// here and every other error still propagates. Verified against
-    /// Herdr 0.8.0 / protocol 19: `tests/fixtures/schema.json` types
+    /// Herdr 0.8.0 / protocol 22: `tests/fixtures/schema.json` types
     /// `pane.get`'s params as `PaneTarget {pane_id}` with a
     /// `{"type":"pane_info","pane":PaneInfo}` success result, and a live socket
     /// answers an unknown pane id with

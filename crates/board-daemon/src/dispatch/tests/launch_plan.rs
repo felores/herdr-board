@@ -1,6 +1,7 @@
 //! Unit tests for the launch-plan argv fork detection.
 
 use super::*;
+use crate::dispatch::launch_plan::compact_tab_label;
 
 fn argv(tokens: &[&str]) -> Vec<String> {
     tokens.iter().map(|s| s.to_string()).collect()
@@ -90,4 +91,16 @@ fn other_harness_fork_spellings_keep_their_shapes() {
     assert!(argv_is_fork("codex", &argv(&["codex", "fork", "t"])));
     assert!(!argv_is_fork("codex", &argv(&["codex", "resume", "t"])));
     assert!(!argv_is_fork("unknown", &argv(&["any", "--fork"])));
+}
+
+#[test]
+fn compact_runtime_labels_use_one_space_and_explicit_verification_role() {
+    assert_eq!(
+        compact_tab_label(14, "tab lifecycle repair", false),
+        "card-14 tab lifecycle repair"
+    );
+    assert_eq!(
+        compact_tab_label(14, "tab lifecycle repair", true),
+        "card-14 tab lifecycle repair verification"
+    );
 }

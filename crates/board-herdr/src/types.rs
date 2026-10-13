@@ -1,7 +1,7 @@
 //! Typed views over herdr result payloads.
 //!
-//! Field names verified against `herdr api schema --json` (Herdr 0.8.0, protocol 19,
-//! captured in `tests/fixtures/schema.json`). All structs use
+//! Field names verified against `herdr api schema --json` (Herdr 0.9.1, protocol 22,
+//! captured in `docs/herdr-0.9.1-schema.json`). All structs use
 //! `#[serde(default)]` on optional fields and ignore unknown fields so the
 //! client keeps working across minor herdr additions.
 
@@ -109,7 +109,7 @@ pub struct PaneInfo {
     pub revision: u64,
 }
 
-/// A protocol-19 agent-session reference (the `AgentSessionInfo` object that
+/// An agent-session reference (the `AgentSessionInfo` object that
 /// `AgentInfo.agent_session` carries): a `{agent, kind, source, value}` DTO
 /// where `kind` is `"id"` or `"path"`.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -146,8 +146,7 @@ pub struct AgentInfo {
     pub launch_pending: bool,
     #[serde(default)]
     pub interactive_ready: bool,
-    /// Session reference (`AgentSessionInfo | null` in the protocol-19
-    /// schema); absent on panes without a reported agent session.
+    /// Session reference (`AgentSessionInfo | null`); absent on panes without a reported agent session.
     #[serde(default)]
     pub agent_session: Option<AgentSession>,
 }
@@ -217,7 +216,7 @@ pub struct TabCreated {
     pub root_pane: PaneInfo,
 }
 
-/// Result of protocol-19 `agent.start`. `argv` echoes the launched command line.
+/// Result of `agent.start`. `argv` echoes the launched command line.
 #[derive(Debug, Clone, Deserialize)]
 pub struct AgentStarted {
     pub agent: AgentInfo,

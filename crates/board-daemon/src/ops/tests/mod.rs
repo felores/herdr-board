@@ -162,7 +162,7 @@ fn fake_herdr_inner(focus_reply: &'static str, pane_exists: bool, protocol: u32)
 }
 
 // ---------------------------------------------------------------------------
-// Rescue fixture: a small stateful Herdr 0.8.0 / protocol 19 server for
+// Rescue fixture: a small stateful Herdr 0.9.0 / protocol 22 server for
 // `run.focus` rescues
 // ---------------------------------------------------------------------------
 
@@ -357,7 +357,7 @@ impl RescueFake {
     }
 }
 
-/// A stateful Herdr 0.8.0 / protocol 19 server covering the rescue path: the run's recorded
+/// A stateful Herdr 0.9.0 / protocol 22 server covering the rescue path: the run's recorded
 /// pane `w1:p9` is **absent** (its terminal was closed) while the card tab
 /// `w1:t1` and its shell anchor `w1:anchor` are still alive. Panes created by
 /// `pane.split` persist in this fake and are returned by `pane.list`, which is

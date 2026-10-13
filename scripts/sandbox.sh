@@ -169,7 +169,7 @@ ensure_image() {
   IMAGE_TAG="hb-sandbox:$hash-$PLATFORM"
   info "image: $IMAGE_TAG"
   if [ "$DRY_RUN" -eq 0 ] && ! docker image inspect "$IMAGE_TAG" >/dev/null 2>&1; then
-    info "building image (pinned base, rust 1.97.0, herdr 0.8.0 verified per arch)"
+    info "building image (pinned base, rust 1.97.0, herdr 0.9.1 verified per arch)"
     run docker build --platform "linux/$PLATFORM" -t "$IMAGE_TAG" "$DOCKER_DIR"
   fi
 }

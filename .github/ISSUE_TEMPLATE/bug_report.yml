@@ -30,7 +30,7 @@ body:
     attributes:
       label: herdr version
       description: Output of `herdr -v`.
-      placeholder: "0.8.2"
+      placeholder: "0.9.1"
     validations:
       required: true
   - type: input

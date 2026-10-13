@@ -100,7 +100,7 @@ pub(crate) enum RescueOutcome {
 /// - **managed** (`agent_kind: Some`): Herdr tracks a registered agent for the
 ///   pane, so require `PaneInfo::agent` to still be *present*. Deliberately a
 ///   presence test, not an equality test against our `agent.start` name: the
-///   supported Herdr 0.8.0 / protocol 19 schema gives `AgentInfo` **both** an `agent` and a
+///   supported Herdr 0.9.0 / protocol 22 schema gives `AgentInfo` **both** an `agent` and a
 ///   separate `name` field, and `e2e/16-managed-p17.sh` matches `pane.agent`
 ///   against the agent *kind* (`pi`/`claude`), so `agent` is not the exclusive
 ///   name we chose and must not be compared to it. Presence is the same
@@ -129,7 +129,7 @@ fn rescued_pane_is_live(pane: &PaneInfo, marker_name: &str, managed: bool) -> bo
 ///
 /// The label is used because it is the one field we both **write** (`pane.rename
 /// {pane_id, label}`) and can **read back** (`PaneInfo::label`) under the pinned
-/// supported Herdr 0.8.0 / protocol 19 schema. The `agent.start` name is deliberately *not* matched
+/// supported Herdr 0.9.0 / protocol 22 schema. The `agent.start` name is deliberately *not* matched
 /// against `PaneInfo::agent`: that field is not the exclusive name we chose (see
 /// [`rescued_pane_is_live`]).
 ///

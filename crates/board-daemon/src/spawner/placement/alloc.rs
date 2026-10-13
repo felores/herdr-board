@@ -334,7 +334,6 @@ fn allocate_card_pane(
         // pane. This also handles an empty exact tab after closure.
         return create_card_tab(client, workspace_id, tab_label, cwd_string, env);
     };
-
     let layout = client
         .pane_layout(Some(&recovery.pane_id))
         .map_err(mark_retryable_placement_race)?;
@@ -414,16 +413,18 @@ fn adopt_bootstrap_tab(
     }
     let root_id = panes[0].pane_id.clone();
 
-    // Adoption: this tab/root is now this card's tab/anchor. The tab label
-    // becomes `card-<id>` and the root becomes `card-<id>-anchor`, then the
-    // ordinary anchor split path supplies the run child.
-    client
-        .tab_rename(&TabRenameParams {
-            tab_id: bootstrap.tab_id.clone(),
-            label: tab_label.to_string(),
-        })
-        .map_err(mark_retryable_placement_race)
-        .context("renaming the adopted workspace tab to the card tab")?;
+    // Legacy cards have no runtime outbox, so preserve their synchronous
+    // bootstrap rename. Opted-in compact labels contain the required space and
+    // are projected durably after exact ownership registration.
+    if !tab_label.contains(' ') {
+        client
+            .tab_rename(&TabRenameParams {
+                tab_id: bootstrap.tab_id.clone(),
+                label: tab_label.to_string(),
+            })
+            .map_err(mark_retryable_placement_race)
+            .context("renaming the adopted workspace tab to the card tab")?;
+    }
     client
         .pane_rename(&PaneRenameParams {
             pane_id: root_id.clone(),

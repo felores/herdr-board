@@ -4,7 +4,7 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use crate::spawner::{HerdrLaunchPlan, SpawnError, Spawner};
-use board_core::db::{Db, EnqueueRun};
+use board_core::db::{Db, EnqueueRun, FinalizeRun, RuntimeLaunch};
 use board_core::protocol::{AwaitingReason, CardCreateParams, CardStatus};
 
 use crate::settings::SpawnerKind;
@@ -20,6 +20,26 @@ impl Spawner for NoSpawn {
     }
     fn is_alive(&self, _: &RuntimeHandle) -> anyhow::Result<bool> {
         Ok(false)
+    }
+}
+
+#[derive(Default)]
+struct CleanupSpawner {
+    closed: Mutex<Vec<String>>,
+}
+impl Spawner for CleanupSpawner {
+    fn spawn(&self, _: &HerdrLaunchPlan) -> std::result::Result<RuntimeHandle, SpawnError> {
+        panic!("cleanup reconciliation test must not spawn")
+    }
+    fn kill(&self, _: &RuntimeHandle) -> anyhow::Result<()> {
+        Ok(())
+    }
+    fn is_alive(&self, _: &RuntimeHandle) -> anyhow::Result<bool> {
+        Ok(false)
+    }
+    fn close_card_tab(&self, _: Option<&Path>, _: &str, tab_id: &str) -> anyhow::Result<()> {
+        self.closed.lock().unwrap().push(tab_id.to_string());
+        Ok(())
     }
 }
 
@@ -170,6 +190,130 @@ fn assert_open_unchanged(f: &Fixture) {
     drop(db);
     assert!(f.d.sched.lock().unwrap().active.is_empty());
     assert!(f.d.watch.lock().unwrap().panes_by_socket.is_empty());
+}
+
+#[tokio::test]
+async fn startup_cleanup_closes_only_exact_owned_stale_tab_and_protects_active_canonical() {
+    let db = Db::open_in_memory().unwrap();
+    let card = db
+        .create_card(&CardCreateParams {
+            title: "legacy duplicates".into(),
+            ..Default::default()
+        })
+        .unwrap();
+    db.activate_runtime_contract(card.id, "tab lifecycle repair")
+        .unwrap();
+    let historical = db
+        .enqueue_run_uow(&EnqueueRun {
+            card_id: card.id,
+            column_id: card.column_id,
+            harness: "pi",
+            argv_json: "[]",
+            prompt_snapshot: "historical",
+            system_prompt_snapshot: Some("system"),
+            launch_spec_json: Some(r#"{"version":1,"execution":{"argv":[],"env":[],"agent_kind":null,"initial_prompt":null,"system_prompt":null},"placement":{"session":null,"space_kind":"workspace","space_ref":"w1","space_cwd":null}}"#),
+            session_id: None,
+            session: None,
+        })
+        .unwrap();
+    db.promote_run_uow(historical.id, Some("w1"), Some("p-stale"), None)
+        .unwrap();
+    db.finalize_run_uow(&FinalizeRun {
+        run_id: historical.id,
+        outcome: RunOutcome::Ok,
+        summary: None,
+        comments: &[],
+        target_column_id: None,
+        final_status: CardStatus::Done,
+        final_awaiting_reason: None,
+        next: None,
+    })
+    .unwrap();
+    let active = db
+        .enqueue_run_uow(&EnqueueRun {
+            card_id: card.id,
+            column_id: card.column_id,
+            harness: "pi",
+            argv_json: "[]",
+            prompt_snapshot: "active",
+            system_prompt_snapshot: Some("system"),
+            launch_spec_json: Some(r#"{"version":1,"execution":{"argv":[],"env":[],"agent_kind":null,"initial_prompt":null,"system_prompt":null},"placement":{"session":null,"space_kind":"workspace","space_ref":"w1","space_cwd":null}}"#),
+            session_id: None,
+            session: None,
+        })
+        .unwrap();
+    db.promote_run_uow(active.id, Some("w1"), Some("p-active"), None)
+        .unwrap();
+    db.record_runtime_launch(&RuntimeLaunch {
+        card_id: card.id,
+        run_id: active.id,
+        herdr_session: "default",
+        workspace_id: "w1",
+        tab_id: "t-canonical",
+        pane_id: "p-active",
+        launch_cwd: Some("/repo"),
+        desired_tab_label: "card-1 tab lifecycle repair",
+        stage: "executing",
+    })
+    .unwrap();
+
+    let spawner = Arc::new(CleanupSpawner::default());
+    let d = testkit::daemon()
+        .db(db)
+        .db_path(PathBuf::from("/tmp/runtime-cleanup.db"))
+        .spawner(spawner.clone())
+        .registry(Some(crate::session::SessionRegistry::new(PathBuf::from(
+            "/exact-default.sock",
+        ))))
+        .build_daemon();
+    let snapshot = RuntimeSnapshot {
+        panes: vec![
+            RuntimePane {
+                pane_id: "p-active".into(),
+                workspace_id: "w1".into(),
+                tab_id: "t-canonical".into(),
+                status: AgentStatus::Working,
+            },
+            RuntimePane {
+                pane_id: "p-stale".into(),
+                workspace_id: "w1".into(),
+                tab_id: "t-stale".into(),
+                status: AgentStatus::Done,
+            },
+        ],
+    };
+    let runtime = Arc::new(ScriptedRuntime {
+        scripts: Mutex::new(VecDeque::from([
+            Script::Snapshot(snapshot.clone()),
+            Script::Snapshot(snapshot),
+        ])),
+        calls: Arc::new(Mutex::new(Vec::new())),
+    });
+    reconcile_once(
+        &d,
+        resolver(
+            None,
+            SessionTarget::Default(PathBuf::from("/exact-default.sock")),
+        ),
+        runtime,
+        Arc::new(FixedClock {
+            instant: Instant::now(),
+            wall_ms: 10_000,
+        }),
+    )
+    .await;
+
+    assert_eq!(spawner.closed.lock().unwrap().as_slice(), &["t-stale"]);
+    assert!(d.store.lock().pending_runtime_closes().unwrap().is_empty());
+    assert_eq!(
+        d.store
+            .lock()
+            .active_run_for_card(card.id)
+            .unwrap()
+            .unwrap()
+            .id,
+        active.id
+    );
 }
 
 #[tokio::test]

@@ -22,8 +22,8 @@ WRAPPER = REPO_ROOT / "scripts" / "sandbox.sh"
 DOCKER_DIR = REPO_ROOT / "docker"
 DOCKERFILE = DOCKER_DIR / "Dockerfile"
 
-HERDR_X86_64_SHA = "976150a14d490c94b243ea2e1a7eb2dfb67f12e36b182db90936f6728e6aecf4"
-HERDR_AARCH64_SHA = "f55610658e1c2e0d2aaef730b4b2ab885f7f8ba00285ab372bfb14f2e3d5b40d"
+HERDR_X86_64_SHA = "2a02fed16beb651ef006e1d43f048f652ca4dc58ad053cd2d44450563d5c54b7"
+HERDR_AARCH64_SHA = "f4ccf4de745f2cb9a39a983e9ba3703dad50ec2a58dea83026ceab721bbd8d9e"
 RUST_VERSION = "1.97.0"
 
 
@@ -290,14 +290,14 @@ class PinningTests(unittest.TestCase):
         self.assertIn(HERDR_AARCH64_SHA, text)
         self.assertIn("herdr-linux-x86_64", text)
         self.assertIn("herdr-linux-aarch64", text)
-        self.assertIn("HERDR_VERSION=0.8.2", text)
+        self.assertIn("HERDR_VERSION=0.9.1", text)
         self.assertIn("releases/download/v${HERDR_VERSION}/", text)
 
     def test_herdr_version_and_protocol_verified_at_build(self) -> None:
         text = DOCKERFILE.read_text(encoding="utf-8")
         self.assertIn('"herdr ${HERDR_VERSION}"', text)
         self.assertIn(".protocol == ${HERDR_PROTOCOL}", text)
-        self.assertIn("HERDR_PROTOCOL=20", text)
+        self.assertIn("HERDR_PROTOCOL=22", text)
 
     def test_unsupported_architecture_fails_the_build(self) -> None:
         text = DOCKERFILE.read_text(encoding="utf-8")

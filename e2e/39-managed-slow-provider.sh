@@ -31,7 +31,7 @@ printf '  disposable workspace pane cwd: %s\n' "$MANAGED_PANE_CWD"
 EXEC_ID="$(col_create '{"name":"Slow Execute","trigger":"auto"}')"
 [ -n "$EXEC_ID" ] || fail "could not create Slow Execute column"
 
-step "Dispatch fake Pi through managed protocol-19/current launch with slow provider"
+step "Dispatch fake Pi through managed protocol-22/current launch with slow provider"
 card_json="$("$BOARD_BIN" card new --title 'Slow Pi' --description 'slow provider prompt must not be lost' \
   --harness pi --model slow/pi-model --effort low --space-kind workspace --space-ref "$WS_ID" --json)"
 CARD_ID="$(printf '%s' "$card_json" | jget id)" || fail "could not parse card id"
@@ -126,7 +126,7 @@ pane = json.loads(sys.argv[1]).get("pane", {})
 pane_id = sys.argv[2]
 assert pane.get("pane_id") == pane_id, f"pane id mismatch {pane.get('pane_id')} vs {pane_id}"
 sess = pane.get("agent_session") or {}
-# Herdr 0.8.0 pane.get may expose agent_session as {kind, value} or path string; accept any non-empty value.
+# Herdr 0.9.1 pane.get may expose agent_session as {kind, value} or path string; accept any non-empty value.
 val = sess.get("value") or sess.get("agent_session_path") or sess.get("path") or ""
 if not val:
     # Fallback: pane may expose agent_session_path directly at top level or via agent_session string

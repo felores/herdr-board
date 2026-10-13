@@ -13,7 +13,7 @@
 8. Cleanup and recovery
 9. Common failures
 
-Commands below were exercised with Herdr 0.8.2 / protocol 20. This repository
+Commands below were exercised with Herdr 0.9.0 / protocol 22. This repository
 requires that exact pair; re-verify the installed CLI and session socket before use.
 
 ## 1. Preflight
@@ -22,9 +22,9 @@ requires that exact pair; re-verify the installed CLI and session socket before 
 REPO="$(git rev-parse --show-toplevel)"
 cd "$REPO"
 git status --short
-test "$(herdr --version)" = "herdr 0.8.2"
+test "$(herdr --version)" = "herdr 0.9.0"
 herdr status
-herdr api schema --json | jq -e 'select(.protocol == 20) | {protocol,schema_version}'
+herdr api schema --json | jq -e 'select(.protocol == 22) | {protocol,schema_version}'
 herdr plugin list --plugin herdr-board --json | jq '.result.plugins[0] | {version,plugin_root,source}'
 ~/.cargo/bin/cargo test -p board-tui --features fake-client --test snapshots
 ```
@@ -146,7 +146,7 @@ WS_JSON="$(herdr --session "$SESSION" workspace create \
 WS="$(printf '%s' "$WS_JSON" | jq -r '.result.workspace.workspace_id')"
 printf 'WS=%s\n' "$WS" >>"$STATE"
 
-printf 'HERDR MUTATION: invoke real plugin action (opens protocol-20 plugin pane)\n'
+printf 'HERDR MUTATION: invoke real plugin action (opens protocol-22 plugin pane)\n'
 herdr --session "$SESSION" plugin action invoke open-board --plugin herdr-board
 
 BOARD_PID="$(lsof -t "$TMP/board.sock" 2>/dev/null | head -1 || true)"

@@ -162,15 +162,15 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      - name: Cache Herdr 0.8.2
+      - name: Cache Herdr 0.9.1
         uses: actions/cache@v4
         with:
-          path: ${{ runner.tool_cache }}/herdr-board-0.8.2-linux-x86_64
-          key: herdr-${{ runner.os }}-x86_64-0.8.2-976150a14d490c94b243ea2e1a7eb2dfb67f12e36b182db90936f6728e6aecf4
+          path: ${{ runner.tool_cache }}/herdr-board-0.9.1-linux-x86_64
+          key: herdr-${{ runner.os }}-x86_64-0.9.1-2a02fed16beb651ef006e1d43f048f652ca4dc58ad053cd2d44450563d5c54b7
 
       - name: Provider-free live E2E
         env:
-          HERDR_CACHE_DIR: ${{ runner.tool_cache }}/herdr-board-0.8.2-linux-x86_64
+          HERDR_CACHE_DIR: ${{ runner.tool_cache }}/herdr-board-0.9.1-linux-x86_64
         run: bash e2e/ci.sh
 
       - name: Upload live E2E evidence

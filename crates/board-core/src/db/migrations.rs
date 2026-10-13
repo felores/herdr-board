@@ -8,7 +8,7 @@ use crate::{Error, Result};
 const SCHEMA_SQL: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../schema.sql"));
 
 /// The latest schema version embedded in [`SCHEMA_SQL`].
-const SCHEMA_VERSION: i64 = 15;
+const SCHEMA_VERSION: i64 = 16;
 
 /// v1 → v2 migration. SQLite cannot alter a CHECK constraint or drop a column
 /// in place, so `cards` is rebuilt. Legacy `space_kind` values `cwd`/`worktree`
@@ -303,6 +303,13 @@ END;
 /// `user_version` only advances after both columns exist.
 const V15_MIGRATION_TABLES: [&str; 2] = ["projects", "boards"];
 
+/// v15 → v16 migration: add the deterministic controller's durable state
+/// plane without rewriting any existing operational row. The exact DDL is
+/// shared with the fresh schema so replay after a crash between DDL commit and
+/// `user_version` stamping is idempotent.
+const V16_MIGRATION_SQL: &str =
+    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../schema.sql"));
+
 impl Db {
     /// Apply migrations gated on `PRAGMA user_version`. Idempotent.
     ///
@@ -553,6 +560,24 @@ impl Db {
                         ))?;
                     }
                 }
+            }
+            if version < 16 {
+                // `schema.sql` uses CREATE TABLE/INDEX IF NOT EXISTS for every
+                // v16 object. Replaying the complete current schema is safe:
+                // all pre-v16 tables/indexes are unguarded and already exist,
+                // so execute only the controller DDL suffix.
+                let controller_ddl = V16_MIGRATION_SQL
+                    .split_once("CREATE TABLE IF NOT EXISTS controller_events")
+                    .map(|(_, suffix)| {
+                        format!("CREATE TABLE IF NOT EXISTS controller_events{suffix}")
+                    })
+                    .ok_or_else(|| {
+                        Error::InvalidState(
+                            "schema v16 migration DDL marker is missing".to_string(),
+                        )
+                    })?;
+                self.conn
+                    .execute_batch(&format!("BEGIN IMMEDIATE;\n{controller_ddl}\nCOMMIT;"))?;
             }
             self.conn
                 .pragma_update(None, "user_version", SCHEMA_VERSION)?;

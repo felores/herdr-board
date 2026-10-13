@@ -2,6 +2,8 @@
 
 #[path = "db/atomic.rs"]
 mod atomic;
+#[path = "db/controller_schema.rs"]
+mod controller_schema;
 #[path = "db/crud.rs"]
 mod crud;
 #[path = "db/migrations.rs"]

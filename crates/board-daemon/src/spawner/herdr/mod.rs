@@ -10,7 +10,7 @@ use std::sync::Arc;
 use std::thread;
 
 use anyhow::{anyhow, Context};
-use board_herdr::HerdrClient;
+use board_herdr::{HerdrClient, TabCloseParams, TabRenameParams};
 
 use super::card_tabs::CardTabRegistry;
 use super::placement::{
@@ -259,6 +259,7 @@ impl HerdrSpawner {
                     return Ok(RuntimeHandle {
                         pane_id: Some(owned.pane_id),
                         workspace_id: Some(owned.workspace_id),
+                        tab_id: Some(owned.tab_id),
                         anchor_pane_id,
                         pid: None,
                         herdr_socket: req.herdr_socket.clone(),
@@ -317,5 +318,47 @@ impl Spawner for HerdrSpawner {
             .session_snapshot()
             .context("herdr session.snapshot")?;
         Ok(snap.pane_exists(pane))
+    }
+
+    fn close_card_tab(
+        &self,
+        socket: Option<&Path>,
+        _workspace_id: &str,
+        tab_id: &str,
+    ) -> anyhow::Result<()> {
+        let mut client = self.client_for(socket)?;
+        match client.tab_close(&TabCloseParams {
+            tab_id: tab_id.to_string(),
+        }) {
+            Ok(()) => Ok(()),
+            Err(board_herdr::HerdrError::Protocol { code, .. })
+                if code == "tab_not_found" || code == "not_found" =>
+            {
+                Ok(())
+            }
+            Err(error) => Err(anyhow::Error::new(error)),
+        }
+    }
+
+    fn rename_card_tab(
+        &self,
+        socket: Option<&Path>,
+        _workspace_id: &str,
+        tab_id: &str,
+        label: &str,
+    ) -> anyhow::Result<()> {
+        let mut client = self.client_for(socket)?;
+        match client.tab_rename(&TabRenameParams {
+            tab_id: tab_id.to_string(),
+            label: label.to_string(),
+        }) {
+            Ok(()) => Ok(()),
+            Err(board_herdr::HerdrError::Protocol { code, .. })
+                if code == "tab_not_found" || code == "not_found" =>
+            {
+                Ok(())
+            }
+            Err(error) => Err(anyhow::Error::new(error)),
+        }
     }
 }

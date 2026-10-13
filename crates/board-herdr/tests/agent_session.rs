@@ -1,8 +1,8 @@
-//! Public-API coverage for the protocol-19 `agent_session` DTO on
+//! Public-API coverage for the protocol-22 `agent_session` DTO on
 //! [`board_herdr::AgentInfo`].
 //!
 //! Shapes verified against `tests/fixtures/schema.json` (Herdr 0.8.0,
-//! protocol 19): `success_response/$defs/AgentInfo.properties.agent_session`
+//! protocol 22): `success_response/$defs/AgentInfo.properties.agent_session`
 //! is `AgentSessionInfo | null`, where `AgentSessionInfo` is the
 //! `{agent, kind, source, value}` object with `kind` ∈ {`id`, `path`}.
 //! `agent_session` is not in `AgentInfo`'s `required` list, so a pane without
@@ -11,7 +11,7 @@
 use board_herdr::AgentInfo;
 use serde_json::json;
 
-/// Minimal protocol-19 `AgentInfo` (schema `required` list) plus the extra
+/// Minimal protocol-22 `AgentInfo` (schema `required` list) plus the extra
 /// `agent`/`name` fields herdr sends, with `agent_session` present
 /// (`kind: "id"`).
 #[test]
@@ -69,7 +69,7 @@ fn decodes_agent_session_present_with_path_kind() {
     assert_eq!(session.value, "/home/user/.herdr/sessions/p19-session.json");
 }
 
-/// `agent_session` omitted (the protocol-19 default for panes without a
+/// `agent_session` omitted (the protocol-22 default for panes without a
 /// reported session) decodes as `None`.
 #[test]
 fn decodes_agent_session_absent_as_none() {

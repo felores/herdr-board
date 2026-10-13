@@ -7,9 +7,9 @@ from pathlib import Path
 from _support import REPO_ROOT as ROOT
 
 
-HERDR_VERSION = "0.8.2"
-HERDR_PROTOCOL = 20
-HERDR_SHA256 = "976150a14d490c94b243ea2e1a7eb2dfb67f12e36b182db90936f6728e6aecf4"
+HERDR_VERSION = "0.9.1"
+HERDR_PROTOCOL = 22
+HERDR_SHA256 = "2a02fed16beb651ef006e1d43f048f652ca4dc58ad053cd2d44450563d5c54b7"
 HERDR_URL = (
     "https://github.com/herdrdev/herdr/releases/download/"
     f"v{HERDR_VERSION}/herdr-linux-x86_64"
@@ -176,16 +176,16 @@ class LiveE2ECIContractTests(unittest.TestCase):
             self.assertNotIn("0.7.5", source)
             self.assertNotIn("protocol-17", source)
             self.assertNotIn("protocol 17", source)
-        self.assertIn("Herdr 0.8.2 / socket protocol 20", readme)
-        self.assertIn("protocol-20/current", readme)
+        self.assertIn("Herdr 0.9.1 / socket protocol 22", readme)
+        self.assertIn("protocol-22/current", readme)
         self.assertIn("Pi integration v8", readme)
         self.assertIn("Pi integration v8", awaiting)
         self.assertIn("current Claude integration v7", readme)
-        self.assertIn("protocol-20", managed)
-        self.assertIn("protocol-20", configured)
-        self.assertIn("protocol-20", fake_pi)
-        self.assertIn("protocol-20", fake_claude)
-        self.assertIn("protocol-20", terminal_shim)
+        self.assertIn("protocol-22", managed)
+        self.assertIn("protocol-22", configured)
+        self.assertIn("protocol-22", fake_pi)
+        self.assertIn("protocol-22", fake_claude)
+        self.assertIn("protocol-22", terminal_shim)
         for path in sorted((ROOT / "e2e").glob("*.sh")):
             source = path.read_text(encoding="utf-8")
             with self.subTest(path=path.name):
@@ -196,7 +196,7 @@ class LiveE2ECIContractTests(unittest.TestCase):
         issue_template = (ROOT / ".github/ISSUE_TEMPLATE/bug_report.yml").read_text(
             encoding="utf-8"
         )
-        self.assertIn('placeholder: "0.8.2"', issue_template)
+        self.assertIn('placeholder: "0.9.1"', issue_template)
         self.assertTrue((ROOT / "e2e/16-managed-p17.sh").is_file())
         self.assertTrue((ROOT / "e2e/17-configured-p17-runner.sh").is_file())
 

@@ -627,6 +627,7 @@ fn renamed_owned_card_tab_reuses_exact_anchor_id_not_a_label() {
             pane_result(req, "w1:p-child")
         }
         "agent.start" => agent_started(req, "w1:p-child", false, true),
+        "tab.rename" => reply(req, serde_json::json!({"type":"tab_renamed"})),
         method => panic!("unexpected renamed card-tab method {method}"),
     });
     let spawner = HerdrSpawner::new(fake.socket.clone());

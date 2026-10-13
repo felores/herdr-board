@@ -57,7 +57,10 @@ Separation card ↔ run is deliberate (vibe-kanban converged on task/attempt/exe
 
 The physical modules follow these boundaries. `board-core::db` is split into migrations,
 board/column, card/comment, run-UoW, and row-mapping modules; `board-core::engine/` owns pure
-lifecycle, transition, validation, and signal decisions, while `board-core::client/` owns the
+lifecycle, transition, validation, signal, and controller decisions. Its controller boundary
+contains deterministic event ordering, review classification, candidate selection, aggregate
+reduction, tab-cardinality policy, and recovery planning, but performs no persistence or runtime
+effects. `board-core::client/` owns the
 blocking client traits, Unix transport, and fake client. `board-daemon::dispatch/` separates
 enqueue preparation, dispatch passes, finalization, and space resolution; `board-daemon::ops/`
 organizes request handling by boards, columns, cards, comments, runs, and discovery; and
@@ -90,7 +93,7 @@ about whether the document is valid.
 ### Herdr compatibility and launch boundary
 
 The public boardd socket protocol remains **v1**. That is independent of the upstream Herdr socket
-contract: this version supports **exactly Herdr 0.8.2 / protocol 20**. The daemon opens a fresh
+contract: this version supports **exactly Herdr 0.9.1 / protocol 22**. The daemon opens a fresh
 Herdr request connection per operation, so compatibility is checked at each boundary rather than
 only once at startup:
 
@@ -202,10 +205,57 @@ runs(id, card_id, column_id, harness, argv_json, prompt_snapshot,
      started_at, timeout_deadline_at_ms, timeout_paused_at_ms,
      ended_at, outcome ('ok'|'fail'|'cancelled'|'lost'),  -- 'lost' is legacy, no longer produced
      result_summary, log_path)
+controller_events(ingest_sequence, event_id, idempotency_key, source, source_id,
+                  card_id, observed_at, causation_id, payload_digest, payload_json)
+card_contracts(card_id, contract_version, revision, contract_json, project_code,
+               outcome_code, task_path, repo_root, human_context, projection_revision)
+review_receipts(receipt_id, card_id, artifact path/digest, receipt_digest,
+                outcome, classification, notes_json, source_event_id)
+human_gate_checkpoints(request_id, card_id, revision, gate_kind, question, options_json,
+                       artifact path/digest, effect_json, authority_json, status)
+human_gate_decisions(decision_id, request_id, action, actor, checkpoint_revision,
+                     artifact_digest, event_id)
+mutable_target_leases(target_uri, card_id, run_id, lease_epoch, expiry/heartbeat)
+effect_outbox(effect_id, card_id, causation_event_id, effect_kind, idempotency_key,
+              payload_json, status, attempts, acknowledgement)
+workspace_bindings(project_id, herdr_session, repo_root, workspace_id,
+                   expected_launch_cwd, binding_revision, binding_digest, active)
+runtime_ownership(card_id, herdr_session, workspace_id, tab_id, pane ids,
+                  desired/observed label, stage, active_run_id, topology/tab/cleanup state)
+card_executor_sessions(card_id, executor_session_id, created_run_id, status,
+                       supersedes_session_id, replacement_cause)
+steering_events(steer_id, idempotency_key, card_id, run_id, executor_session_id,
+                author, text, objective, kind, input_surface/source, streaming behavior, status,
+                contract_changed, protected_request_id, delivery/acknowledgement)
+orchestrator_watch_cursors(subscriber_id, last_ingest_sequence/event_id, updated_at)
+orchestrator_notifications(notification_id, idempotency_key, steer_id, subscriber_id,
+                           message_json, status, presentation/acknowledgement)
+controller_runtime(id=1, lease holder/epoch/expiry, health, last_reconciled_at,
+                   next_action_json, blocker_json)
+todo_projection_items(todo_id, commitment_digest, card_id, phase/artifact/owner,
+                      next_predicate_json, authority_event_id, source, text,
+                      status, projection_revision, reconciliation timestamps)
+todo_reconciliations(id, card_id, trigger_event_id, projection_revision,
+                     decisions total/represented, new/unowned counts, discrepancies)
+controller_snapshots(snapshot_id, project/card, projection_kind, generation/parent,
+                     state_hash, manifest/state JSON, event cursor, status)
+executor_session_checkpoints(checkpoint_id, card/project/session, generation/parent,
+                             state_hash, manifest, through_event_id, status)
+projection_conflicts(conflict_id, projection identity, baseline/current/candidate
+                     hashes and generations, details, status, source_event_id)
+controller_pins(pin_id, target kind/id, actor, reason, state/expiry, source_event_id)
+diagnostics(id, card_id, code, severity, status, details_json, source_event_id)
 ```
 
-Schema is versioned via `PRAGMA user_version` (current = **v15**). A fresh DB is built straight from
-`schema.sql` and stamped v15. Existing v1→v4 migrations retain their space/session, archive, and Pi
+For opted-in runtime ownership, tab presentation and cleanup are durable effects. `tab_rename`
+effects target one exact `tab_id`, retry after transport failure, and acknowledge the observed label.
+`tab_close` effects use the same retry/ack path. Startup may discover stale tabs only through exact
+durable run pane identities. It closes a candidate only when every pane in that tab is known and
+quiescent, while the canonical tab and the active run tab resolve to the same protected exact id.
+Labels never select ownership or cleanup targets.
+
+Schema is versioned via `PRAGMA user_version` (current = **v16**). A fresh DB is built straight from
+`schema.sql` and stamped v16. Existing v1→v4 migrations retain their space/session, archive, and Pi
 effort behavior. v5 adds unique non-null `boards.scope_path`, preserves board `id=1` plus every
 related row as `Global`, and leaves existing card harnesses unchanged. v6 rebuilds `cards` to admit
 the `awaiting`/`done` statuses and adds `cards.awaiting_reason` (NULL outside `awaiting`). v7 adds
@@ -231,7 +281,27 @@ board_selection, project_recents, and board_recents tables. The v13→v14 migrat
 keys disabled (boards is the parent of columns/cards): every existing scoped board becomes its own
 project's first board `main` and the Global board becomes the Global project's `main`, so **all**
 board ids, columns, cards, runs, and comment history are preserved; a crash rolls the upgrade back
-and `user_version` stays 13. A legacy NULL remains a
+and `user_version` stays 13. v15 adds reversible project and board archive timestamps. **v16 adds
+an additive, initially empty controller state plane** for event ordering/dedupe, structured card
+contracts, receipts, exact Human Gate checkpoints/decisions, mutable-target leases, idempotent
+effects, canonical workspace binding, exact runtime ownership, executor-session lineage, durable
+Board-aware steering, watchdog health/lease, and diagnostics. The migration rewrites no existing
+operational row. Todo items are a rebuildable Board/event projection with durable authority links;
+unclassified commitments remain visibly `unbound`, and reconciliation stores decision coverage,
+new items, missing owners, and discrepancies. Steering stores exact human input before delivery,
+classifies `guidance`, `answer`,
+`scope_change`, or `protected_decision`, and records queued, delivered, acknowledged, or rejected
+state. Scope changes cannot silently claim a contract update and protected decisions bind to Human
+Gate. The approved watch bridge uses Pi's input event as the text authority, boardd as durable bus,
+and a cursor plus deduplicated notification for the main orchestrator chat. Herdr output remains a
+health sensor and never reconstructs human text; orchestrator objections are not injected into the
+worker tab. Derived state follows an append-only journal plus atomically committed, hash/manifest
+validated generations, parent-linked checkpoints, explicit pins, and preserved three-way conflicts.
+Startup restore selects the latest complete checkpoint and falls back without serializing arbitrary
+Deno/V8 objects or depending on Notebook Mode. External effect acknowledgements are facts, never
+automatic rollback candidates. The pure controller reducer is implemented, but runtime remains on
+the pre-controller path until the later daemon slice ingests events and writes these tables. A
+legacy NULL remains a
 launch-version marker: pre-v7 built-ins
 execute their persisted all-in-one argv unchanged, while pre-v7 configured rows retain their
 historical spawn-time current-column reconstruction. `Run` deserialization defaults an omitted field
@@ -239,7 +309,7 @@ to NULL, but serialization always omits `system_prompt_snapshot` and its content
 responses. `launch_spec_json` is likewise internal and omitted in full from boardd wire responses.
 
 Source ownership is explicit: `schema.sql` is the fresh schema source, `board-core::db` owns ordered
-upgrades through v15, and `board-core::protocol` owns the v1 wire DTOs and additive compatibility
+upgrades through v16, and `board-core::protocol` owns the v1 wire DTOs and additive compatibility
 rules. The CLI and TUI use typed `BoardClient` wrappers; only boardd reads or writes SQLite. New
 v1 fields such as `BoardSnapshot.active_runs` and RPC error `kind`/`details` are additive, so older
 clients can continue decoding the existing fields.
@@ -284,8 +354,8 @@ Cards target a **herdr session** plus a space in it. Because two sessions can ea
 
 ### new_workspace flow
 
-On first dispatch of a `new_workspace` card: preflight the selected socket for exact Herdr 0.8.2 /
-protocol 20, then list the session's workspaces; if one's label matches `space_ref`
+On first dispatch of a `new_workspace` card: preflight the selected socket for exact Herdr 0.9.1 /
+protocol 22, then list the session's workspaces; if one's label matches `space_ref`
 (case-insensitive) reuse it, else `workspace.create {label:space_ref, cwd:space_cwd, focus:false}`.
 Then proceed identically to a `workspace` card (cwd snapshot, pane-first per-card tab placement). An existing `workspace` card may provide `space_cwd` as an explicit override; otherwise its non-empty live pane cwd values must all agree, and heterogeneous candidates fail closed instead of depending on snapshot order. Reused `new_workspace` cards still verify the live workspace rather than treating their creation cwd as an override. If the reused or existing workspace snapshot fails, or contains no live cwd, dispatch fails; it never falls back to process cwd or a stale snapshot. A workspace this dispatch **created** additionally
 threads its exact initial tab/root pane as a one-shot bootstrap hint: the first card-tab
@@ -770,7 +840,7 @@ opens the script, the residual configured-script orphan is an accepted asynchron
 2. **User drags card → Plan** (TUI → boardd `card.move`).
 3. Column engine: *Plan* is `trigger=auto` → **enqueue run** on the card's space queue.
 4. Dispatcher (respecting per-space serial queue + global cap):
-   a. Resolve the card's session socket and `ping` it. Anything except exact Herdr 0.8.2 / protocol 20 fails before workspace discovery/creation. Then reuse workspace `w4`, or create/reuse the card's labeled `new_workspace`; repository worktree isolation remains an agent prompt responsibility.
+   a. Resolve the card's session socket and `ping` it. Anything except exact Herdr 0.9.1 / protocol 22 fails before workspace discovery/creation. Then reuse workspace `w4`, or create/reuse the card's labeled `new_workspace`; repository worktree isolation remains an agent prompt responsibility.
    b. Preflight the selected socket again at the spawner boundary. For a new durable run, the card's **`card-<id>` tab** is resolved by exact owned id (reconstructed from the newest matching durable pane in the same session/workspace when boardd restarts), or `tab.create {workspace_id,cwd,env,…}` supplies a new shell anchor — unless the dispatch just created the workspace, in which case the workspace's own initial tab is adopted (verified, then renamed) instead of leaving an unused tab. The anchor is labeled `card-<id>-anchor`, its exact id is persisted on the promoted run (NULL for managed runs, whose anchor is closed after a successful launch), and the run child is always created by `pane.split` from that anchor; `agent.start`/`pane run` never target the root. A renamed anchor is still selected only by exact identity; a closed anchor is recreated only from a durable board-run child in the exact proven tab, and missing proof creates a fresh tab without selecting a duplicate-label user tab. Exact ended children may be reclaimed before a later split so the anchor keeps usable geometry. The child receives the run env; the anchor receives only stable card identity. If multiple historical panes are live, newest run id wins; legacy rows retain their old lookup. Placement, cwd, and environment are not `agent.start` fields; the call receives neither the workspace placement nor the anchor pane id.
     c. For Pi/Claude, write the snapshotted system prompt to a mode-`0600` temporary file; issue `agent.start {name,kind,pane_id,args}` on the split child with prompt-free startup args; a typed `agent_pane_busy` retries the exact request on that same child with bounded 100ms/200ms backoff (never another split); poll `agent.get` for readiness; then send only the task snapshot through `agent.prompt`. Remove the file. For codex/opencode/antigravity, no prompt file exists: after the same readiness poll the daemon bounded-polls `agent.get.agent_session` (at most 5 probes / 10s) for the integration-reported id (expected agent, `kind:"id"`, non-empty `value`; opencode and antigravity also pin the integration source, `herdr:opencode` / `herdr:antigravity_cli`) and persists it atomically with the promotion — **codex captures before delivering the prompt, opencode and antigravity after it** (real OpenCode mints `agent_session` only once the first `agent.prompt` lands; antigravity likewise reports its conversation id only after the first prompt) — and the prompt is a delimited `system + task` block on a Mint, the task alone on a resume/fork fresh pane. Card status → `running`; record the exact child pane/workspace ids. The pane is **visible** — you can watch or type into it anytime.
 
@@ -924,6 +994,6 @@ herdr panes are fully drivable from the CLI (`pane send-keys` with named keys, `
 | 1. Unit | column engine, prompt assembly, queue, transitions | plain Rust tests, in-memory SQLite; no herdr |
 | 2. TUI snapshot | every view/modal/keybind incl. `?` help | ratatui `TestBackend` + fed `KeyEvent`s + `insta` snapshots; no herdr, no terminal |
 | 3. Daemon integration | dispatch → run → done → auto-move, without tokens | config fake harness plus built-in Pi adapter tests; real boardd paths, no provider call |
-| 4. Full E2E | real Herdr wiring | collision-resistant ephemeral named Herdr session plus disposable workspace; the standard suite uses checked-in fake Pi/Claude/Codex/OpenCode/Antigravity (`agy`)/configured harnesses and asserts pane-first placement/prompt/argv contracts against the current Herdr 0.8.2 / protocol 20 gate with zero provider cost. Separate opt-in real-Claude Haiku/low, real-Codex low, and real-OpenCode low smokes are never in `run-all.sh`; each intended contract is one authorized attempt with no retry or fallback (and may incur cost). |
+| 4. Full E2E | real Herdr wiring | collision-resistant ephemeral named Herdr session plus disposable workspace; the standard suite uses checked-in fake Pi/Claude/Codex/OpenCode/Antigravity (`agy`)/configured harnesses and asserts pane-first placement/prompt/argv contracts against the current Herdr 0.9.1 / protocol 22 gate with zero provider cost. Separate opt-in real-Claude Haiku/low, real-Codex low, and real-OpenCode low smokes are never in `run-all.sh`; each intended contract is one authorized attempt with no retry or fallback (and may incur cost). |
 
 Isolation rules for level 3–4: `BOARD_DB=/tmp/…` + dedicated daemon socket per test run so tests never touch the real board; every interactive/live test must create and use a collision-resistant ephemeral named Herdr session plus a disposable workspace, never a user's session, workspace, or tab. The session may run headlessly in CI, but it must retain the same named-session and workspace requirements.

@@ -233,6 +233,7 @@ fn finalize_run_inner(
         "run finalized"
     );
     d.emit_run_ended(effects.card.id, run_id, outcome);
+    super::process_runtime_effects(d);
     d.wake_dispatch();
     Ok(Some((effects.finished_run, effects.card)))
 }

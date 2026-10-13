@@ -46,6 +46,16 @@ pub(crate) fn board_env(
     Ok(env)
 }
 
+pub(crate) fn compact_tab_label(card_id: i64, description: &str, verifying: bool) -> String {
+    let description = if verifying {
+        format!("{description} verification")
+    } else {
+        description.to_string()
+    };
+    let description = description.split_whitespace().collect::<Vec<_>>().join(" ");
+    format!("card-{card_id} {description}")
+}
+
 /// Promote one queued run to running. Returns `Ok(true)` if it started,
 /// `Ok(false)` if the spawn failed (the run is finished `fail`).
 ///
@@ -58,9 +68,13 @@ pub(crate) fn board_env(
     fields(run_id = run.id, card_id = card.id, harness = %run.harness)
 )]
 pub(super) async fn spawn_one(d: &Arc<Daemon>, run: &Run, card: &Card) -> Result<bool> {
-    let column = {
+    let (column, runtime_description, runtime_role) = {
         let db = d.store.lock();
-        db.require_column(run.column_id)?
+        (
+            db.require_column(run.column_id)?,
+            db.runtime_label_description(card.id)?,
+            db.runtime_role_for_run(run.id)?,
+        )
     };
 
     // A non-NULL snapshot is explicit managed-launch metadata. Legacy v6
@@ -130,7 +144,16 @@ pub(super) async fn spawn_one(d: &Arc<Daemon>, run: &Run, card: &Card) -> Result
         // New durable runs get one exact tab per card. Legacy rows retain the
         // historical kanban placement and lookup behavior unchanged.
         tab_label: Some(if run.launch_spec.is_some() {
-            format!("card-{}", card.id)
+            runtime_description
+                .as_deref()
+                .map(|description| {
+                    compact_tab_label(
+                        card.id,
+                        description,
+                        runtime_role.as_deref() == Some("verification"),
+                    )
+                })
+                .unwrap_or_else(|| format!("card-{}", card.id))
         } else {
             "kanban".to_string()
         }),
@@ -353,6 +376,7 @@ pub(super) async fn spawn_one(d: &Arc<Daemon>, run: &Run, card: &Card) -> Result
     if !register_spawned_run(d, run.id, handle, started, deadline, deadline_at_ms)? {
         return Ok(false);
     }
+    super::process_runtime_effects(d);
 
     // Visible antigravity warnings, authored as card comments (they appear in
     // the card/run history like every system note). The promotion above
@@ -452,6 +476,30 @@ pub(crate) fn register_spawned_run(
             // with the handle.
             spawned.captured_session_id.as_deref(),
         )?;
+        if let (Some(workspace_id), Some(tab_id), Some(pane_id)) = (
+            spawned.workspace_id.as_deref(),
+            spawned.tab_id.as_deref(),
+            spawned.pane_id.as_deref(),
+        ) {
+            if let Some(description) = db.runtime_label_description(card.id)? {
+                let role = db
+                    .runtime_role_for_run(run_id)?
+                    .unwrap_or_else(|| "executor".into());
+                let verifying = role == "verification";
+                let label = compact_tab_label(card.id, &description, verifying);
+                db.record_runtime_launch(&board_core::db::RuntimeLaunch {
+                    card_id: card.id,
+                    run_id,
+                    herdr_session: run.session.as_deref().unwrap_or("default"),
+                    workspace_id,
+                    tab_id,
+                    pane_id,
+                    launch_cwd: None,
+                    desired_tab_label: &label,
+                    stage: if verifying { "verifying" } else { "executing" },
+                })?;
+            }
+        }
         let registered_handle = handle.take().ok_or_else(|| {
             Error::InvalidState(format!(
                 "run {run_id} registration lost its spawn handle before bookkeeping"

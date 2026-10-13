@@ -13,7 +13,7 @@
 //!   [`HerdrEvent`]s via `events.subscribe`.
 //!
 //! Method and field names are verified against `herdr api schema --json`
-//! (Herdr 0.8.2, protocol 20), captured in `tests/fixtures/schema.json`.
+//! (Herdr 0.9.1, protocol 22), captured in `tests/fixtures/schema.json`.
 
 mod client;
 mod envelope;
@@ -24,9 +24,9 @@ mod transport;
 mod types;
 
 /// The only Herdr release supported by this client.
-pub const SUPPORTED_HERDR_VERSION: &str = "0.8.2";
+pub const SUPPORTED_HERDR_VERSION: &str = "0.9.1";
 /// The only Herdr socket protocol supported by this client.
-pub const SUPPORTED_HERDR_PROTOCOL: u32 = 20;
+pub const SUPPORTED_HERDR_PROTOCOL: u32 = 22;
 
 pub use client::HerdrClient;
 pub use envelope::{ErrorBody, Request, Response};
@@ -36,7 +36,7 @@ pub use events::{
 };
 pub use params::{
     AgentPromptParams, AgentPromptWaitOptions, AgentStartParams, AgentWaitParams, PaneRenameParams,
-    PaneSplitParams, TabCreateParams, TabRenameParams, WorkspaceCreateParams,
+    PaneSplitParams, TabCloseParams, TabCreateParams, TabRenameParams, WorkspaceCreateParams,
 };
 pub use transport::{default_socket_path, SocketDeadlines};
 pub use types::{

@@ -1,0 +1,52 @@
+version: 1
+updated_at: "2026-09-17"
+track: established-system
+phase: implementation
+current_artifact: deterministic-controller-pure-engine
+authority: /Users/felo/Documents/FeloVault/.scratchpad/2026-09-16-155940_contrato-orquestador-board.md
+
+product_context:
+  status: established-by-plan
+
+styleframes: {}
+approval_receipts:
+  - artifact: deterministic-board-controller-contract
+    digest: sha256:9dc15b15988440ad8b2307f2d20af76431012db3c8c64a3e2764c0abbda4c722
+    decision: local-implementation
+    approver: user
+    approved_at: "2026-09-16"
+    scope: local repository implementation only
+  - artifact: controller-runtime-continuity-and-steering
+    decision: implement-verify-activate
+    approver: user
+    approved_at: "2026-09-17"
+    scope: one-tab topology, executor continuity, autonomous watchdog, and Board-aware steering
+
+design_system:
+  status: approved
+  source: existing-ratatui-interface
+
+prototype:
+  permitted: false
+  isolation_path: .scratchpad/prototypes
+  production_mutation: true
+  current: null
+
+stack:
+  application: rust-ratatui
+  styling: existing-board-tui-theme
+  interaction: existing-pure-reducer-and-effect-driver
+
+implementation_authorized: true
+
+mutation_policy:
+  allowed_before_implementation: []
+  blocked_before_implementation: []
+
+next_legal_transition:
+  requires: pure-reducer-verification
+  from: pure-reducer
+  to: daemon-ingestion
+
+known_exceptions:
+  - Human Gate actions are contract-approved interaction changes, not a visual redesign.

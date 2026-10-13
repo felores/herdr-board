@@ -276,7 +276,7 @@ e2e_require() {
   [ -f "$HRPC" ] || fail "hrpc.py missing at $HRPC"
 }
 
-# Protocol-19 preflight. Keep this exact and early: no scenario may dispatch
+# Protocol-22 preflight. Keep this exact and early: no scenario may dispatch
 # against an older or unknown/future Herdr, since the wire launch contract is
 # intentionally not backward compatible. The ping evidence is printed so a
 # failed run records both the CLI version and the socket's negotiated protocol.
@@ -284,18 +284,18 @@ e2e_protocol_preflight() {
   local version ping protocol reported_version
   version="$($HERDR_BIN --version 2>&1 || true)"
   printf '  Herdr preflight: %s\n' "$version"
-  [ "$version" = "herdr 0.8.2" ] \
-    || fail "requires exactly Herdr 0.8.2 (got: $version)"
+  [ "$version" = "herdr 0.9.1" ] \
+    || fail "requires exactly Herdr 0.9.1 (got: $version)"
   ping="$(hrpc ping '{}')" \
     || fail "Herdr protocol preflight ping failed"
   protocol="$(printf '%s' "$ping" | python3 -c 'import json,sys; print(json.load(sys.stdin)["protocol"])' 2>/dev/null || true)"
   reported_version="$(printf '%s' "$ping" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("version", ""))' 2>/dev/null || true)"
   printf '  Herdr ping evidence: version=%s protocol=%s payload=%s\n' \
     "$reported_version" "$protocol" "$ping"
-  [ "$reported_version" = "0.8.2" ] \
-    || fail "requires Herdr 0.8.2 from ping (got: $reported_version)"
-  [ "$protocol" = "20" ] \
-    || fail "requires Herdr protocol 20 (got: ${protocol:-missing})"
+  [ "$reported_version" = "0.9.1" ] \
+    || fail "requires Herdr 0.9.1 from ping (got: $reported_version)"
+  [ "$protocol" = "22" ] \
+    || fail "requires Herdr protocol 22 (got: ${protocol:-missing})"
 }
 
 # e2e_build — build the release binary if absent (or E2E_FORCE_BUILD=1). cargo is
@@ -440,7 +440,7 @@ e2e_board_herdr_mutate() {
 # forces the width ratatui sees.
 #
 # Two empirical constraints found while wiring this up, both against real
-# Herdr 0.8.2 panes (see the task write-up for the full A/B):
+# Herdr 0.9.1 panes (see the task write-up for the full A/B):
 #
 # 1. COLUMNS-ONLY, never `rows`. A pane's row count is Herdr's own fixed
 #    internal bookkeeping (visible, unchanging, via `pane.list`'s
@@ -1571,7 +1571,7 @@ e2e_isolate() {
 }
 
 # e2e_write_config <path> — write the isolated daemon config. The fake harness
-# is a configured (unmanaged) command launched through the protocol-20 pane-run
+# is a configured (unmanaged) command launched through the protocol-22 pane-run
 # bridge, not `agent.start`. Its `env` argv wrapper pins BOARD_BIN independently
 # of pane/workspace environment and carries optional fake-agent knobs from
 # E2E_FAKE_ENV (a space-separated list of KEY=VAL, e.g.

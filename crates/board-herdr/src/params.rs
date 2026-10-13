@@ -1,7 +1,7 @@
 //! Public parameter structs for herdr RPC calls.
 //!
 //! Every struct serializes to the exact field names and shape expected by the
-//! herdr socket protocol (protocol 19). Optional fields use
+//! herdr socket protocol (protocol 22). Optional fields use
 //! `#[serde(skip_serializing_if)]` so they are omitted when absent, matching
 //! the wire behaviour of the `herdr` CLI.
 
@@ -78,7 +78,7 @@ pub struct AgentWaitParams {
     pub timeout_ms: Option<u64>,
 }
 
-/// Params for protocol-19 `pane.split`.
+/// Params for protocol-22 `pane.split`.
 #[derive(Debug, Clone, Serialize)]
 pub struct PaneSplitParams {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -101,6 +101,11 @@ pub struct PaneSplitParams {
 pub struct TabRenameParams {
     pub tab_id: String,
     pub label: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct TabCloseParams {
+    pub tab_id: String,
 }
 
 /// Params for `pane.rename`.

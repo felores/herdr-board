@@ -124,16 +124,16 @@ fn protocol_gate_accepts_exact_supported_contract() {
         assert_eq!(req["method"], "ping");
         reply_for(
             req,
-            r#"{"type":"pong","version":"0.8.2","protocol":20,"capabilities":{}}"#,
+            r#"{"type":"pong","version":"0.9.1","protocol":22,"capabilities":{}}"#,
         )
     });
 
     let mut c = HerdrClient::connect(&path).unwrap();
     let pong = c
         .require_supported_protocol()
-        .expect("Herdr 0.8.2 with protocol 20 must be accepted");
-    assert_eq!(SUPPORTED_HERDR_VERSION, "0.8.2");
-    assert_eq!(SUPPORTED_HERDR_PROTOCOL, 20);
+        .expect("Herdr 0.9.1 with protocol 22 must be accepted");
+    assert_eq!(SUPPORTED_HERDR_VERSION, "0.9.1");
+    assert_eq!(SUPPORTED_HERDR_PROTOCOL, 22);
     assert_eq!(pong.version, SUPPORTED_HERDR_VERSION);
     assert_eq!(pong.protocol, SUPPORTED_HERDR_PROTOCOL);
 }
@@ -145,7 +145,7 @@ fn deprecated_protocol_adapter_accepts_only_the_supported_protocol() {
         assert_eq!(req["method"], "ping");
         reply_for(
             req,
-            r#"{"type":"pong","version":"0.8.2","protocol":20,"capabilities":{}}"#,
+            r#"{"type":"pong","version":"0.9.1","protocol":22,"capabilities":{}}"#,
         )
     });
 
@@ -181,7 +181,7 @@ fn deprecated_protocol_adapter_rejects_a_different_requested_protocol() {
 
 #[test]
 fn protocol_gate_rejects_mismatches_with_exact_diagnostics() {
-    for (version, protocol) in [("0.7.5", 19), ("0.8.0", 17), ("0.7.5", 17), ("0.9.0", 20)] {
+    for (version, protocol) in [("0.7.5", 19), ("0.8.0", 17), ("0.7.5", 17), ("0.9.1", 20)] {
         let path = serve_calls(move |req| {
             reply_for(
                 req,
@@ -239,7 +239,7 @@ fn is_live_true_on_pong() {
     let path = serve_calls(|req| {
         reply_for(
             req,
-            r#"{"type":"pong","version":"0.8.2","protocol":20,"capabilities":{}}"#,
+            r#"{"type":"pong","version":"0.9.1","protocol":22,"capabilities":{}}"#,
         )
     });
     let mut c = HerdrClient::connect(&path).unwrap();
@@ -272,7 +272,7 @@ fn typed_result_extraction_workspace_create() {
 
 #[test]
 fn tab_list_parses_live_payload() {
-    // Captured from the protocol-19 herdr socket (`tab.list`).
+    // Captured from the protocol-22 herdr socket (`tab.list`).
     let path = serve_calls(|req| {
         assert_eq!(req["method"], "tab.list");
         // `None` workspace is sent explicitly as null.
@@ -407,7 +407,7 @@ fn agent_wait_sends_target_until_and_timeout() {
 
 #[test]
 fn tab_rename_serializes_typed_params_and_accepts_any_success_payload() {
-    // `tab.rename` is protocol-19 additive surface (schema fixture
+    // `tab.rename` is protocol-22 additive surface (schema fixture
     // `TabRenameParams {tab_id, label}`; `herdr tab rename <TAB_ID> <LABEL>`
     // is the CLI spelling). The board only needs the rename to have
     // succeeded, so the client deliberately does not decode the result
@@ -459,7 +459,7 @@ fn pane_rename_serializes_typed_params_and_parses_pane_info() {
 
 #[test]
 fn pane_get_decodes_pane_info_and_maps_a_dead_pane_to_none() {
-    // Envelope captured from Herdr 0.8.0 / protocol 19 (`pane.get`): params are
+    // Envelope captured from Herdr 0.8.0 / protocol 22 (`pane.get`): params are
     // `PaneTarget {pane_id}`, success is `{"type":"pane_info","pane":…}`.
     let path = serve_calls(|req| {
         assert_eq!(req["method"], "pane.get");
@@ -519,7 +519,7 @@ fn pane_focus_returns_pane_info() {
 
 #[test]
 fn pane_layout_parses_live_payload() {
-    // Captured verbatim from the protocol-19 herdr socket (`pane.layout`, focused tab).
+    // Captured verbatim from the protocol-22 herdr socket (`pane.layout`, focused tab).
     let path = serve_calls(|req| {
         assert_eq!(req["method"], "pane.layout");
         reply_for(

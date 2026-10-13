@@ -4,7 +4,7 @@
 //! sibling test modules:
 //!
 //! 1. [`daemon`] — one builder for the twelve-argument [`Daemon::new`].
-//! 2. [`herdr_server`] — one fake Herdr 0.8.0 / protocol 19 Unix socket server,
+//! 2. [`herdr_server`] — one fake Herdr 0.9.0 / protocol 22 Unix socket server,
 //!    with a configurable protocol/version (so protocol-gate tests can serve a
 //!    *wrong* one), per-method canned responses, an optional accept count, and
 //!    recorded request inspection. The generic supported-contract JSON

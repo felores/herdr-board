@@ -4,6 +4,7 @@
 //! scheduler/store mutation. Uncertain observations are never treated as pane
 //! exit.
 
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
@@ -43,7 +44,15 @@ pub enum ProbeFailure {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RuntimeSnapshot {
-    panes: Vec<(String, AgentStatus)>,
+    panes: Vec<RuntimePane>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct RuntimePane {
+    pane_id: String,
+    workspace_id: String,
+    tab_id: String,
+    status: AgentStatus,
 }
 
 impl RuntimeSnapshot {
@@ -52,7 +61,12 @@ impl RuntimeSnapshot {
         Self {
             panes: panes
                 .into_iter()
-                .map(|(id, status)| (id.into(), status))
+                .map(|(id, status)| RuntimePane {
+                    pane_id: id.into(),
+                    workspace_id: String::new(),
+                    tab_id: String::new(),
+                    status,
+                })
                 .collect(),
         }
     }
@@ -60,9 +74,17 @@ impl RuntimeSnapshot {
     fn observe(&self, pane_id: &str) -> RuntimeProbe {
         self.panes
             .iter()
-            .find(|(id, _)| id == pane_id)
-            .map(|(_, status)| RuntimeProbe::Alive(*status))
+            .find(|pane| pane.pane_id == pane_id)
+            .map(|pane| RuntimeProbe::Alive(pane.status))
             .unwrap_or(RuntimeProbe::Gone)
+    }
+
+    fn tab_for_pane(&self, pane_id: &str, workspace_id: &str) -> Option<&str> {
+        self.panes
+            .iter()
+            .find(|pane| pane.pane_id == pane_id && pane.workspace_id == workspace_id)
+            .map(|pane| pane.tab_id.as_str())
+            .filter(|tab_id| !tab_id.is_empty())
     }
 }
 
@@ -126,10 +148,20 @@ impl Runtime for HerdrRuntime {
         let mut client =
             crate::herdr_conn::connect_checked(socket).map_err(classify_herdr_error)?;
         let snapshot = client.session_snapshot().map_err(classify_herdr_error)?;
-        let panes: Vec<(String, AgentStatus)> =
-            crate::herdr_snapshot::snapshot_pane_statuses(snapshot)
-                .into_iter()
-                .collect();
+        let statuses = crate::herdr_snapshot::snapshot_pane_statuses(snapshot.clone());
+        let panes = snapshot
+            .panes
+            .into_iter()
+            .map(|pane| RuntimePane {
+                status: statuses
+                    .get(&pane.pane_id)
+                    .copied()
+                    .unwrap_or(pane.agent_status),
+                pane_id: pane.pane_id,
+                workspace_id: pane.workspace_id,
+                tab_id: pane.tab_id,
+            })
+            .collect();
         Ok(RuntimeSnapshot { panes })
     }
 }
@@ -151,6 +183,9 @@ pub async fn reconcile_once(
     runtime: Arc<dyn Runtime>,
     clock: Arc<dyn ReconcileClock>,
 ) {
+    dispatch::process_runtime_effects(d);
+    reconcile_duplicate_tabs(d, resolver.clone(), runtime.clone()).await;
+    dispatch::process_runtime_effects(d);
     let active = match d.store.active_runs() {
         Ok(active) => active,
         Err(_) => {
@@ -201,6 +236,90 @@ pub async fn reconcile_once(
             }
         };
         apply_observation(d, run, card, target, probe, clock.as_ref());
+    }
+}
+
+async fn reconcile_duplicate_tabs(
+    d: &Arc<Daemon>,
+    resolver: Arc<dyn SessionResolver>,
+    runtime: Arc<dyn Runtime>,
+) {
+    let topologies = match d.store.lock().runtime_topologies() {
+        Ok(topologies) => topologies,
+        Err(error) => {
+            tracing::warn!(error = %error, "reconciliation: runtime topology load failed");
+            return;
+        }
+    };
+    for topology in topologies {
+        let target = resolver.resolve_target(
+            (topology.herdr_session != "default").then_some(topology.herdr_session.as_str()),
+        );
+        if matches!(target, SessionTarget::Unresolved) {
+            continue;
+        }
+        let worker_target = target.clone();
+        let runtime = runtime.clone();
+        let snapshot =
+            match tokio::task::spawn_blocking(move || runtime.snapshot(&worker_target)).await {
+                Ok(Ok(snapshot)) => snapshot,
+                _ => continue,
+            };
+        if !snapshot.panes.iter().any(|pane| {
+            pane.workspace_id == topology.workspace_id && pane.tab_id == topology.canonical_tab_id
+        }) {
+            continue;
+        }
+        let active_run_tab_id = match topology.active_run_pane_id.as_deref() {
+            Some(pane_id) => match snapshot.tab_for_pane(pane_id, &topology.workspace_id) {
+                Some(tab_id) => Some(tab_id.to_string()),
+                None => continue,
+            },
+            None if topology.active_run_id.is_some() => continue,
+            None => None,
+        };
+        let known_panes = topology
+            .durable_pane_ids
+            .iter()
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>();
+        let candidate_tabs = snapshot
+            .panes
+            .iter()
+            .filter(|pane| {
+                pane.workspace_id == topology.workspace_id
+                    && pane.tab_id != topology.canonical_tab_id
+                    && known_panes.contains(pane.pane_id.as_str())
+            })
+            .map(|pane| pane.tab_id.clone())
+            .collect::<BTreeSet<_>>();
+        let stale_tab_ids = candidate_tabs
+            .into_iter()
+            .filter(|tab_id| {
+                let panes = snapshot
+                    .panes
+                    .iter()
+                    .filter(|pane| {
+                        pane.workspace_id == topology.workspace_id && pane.tab_id == *tab_id
+                    })
+                    .collect::<Vec<_>>();
+                !panes.is_empty()
+                    && panes.iter().all(|pane| {
+                        known_panes.contains(pane.pane_id.as_str())
+                            && !matches!(pane.status, AgentStatus::Working | AgentStatus::Blocked)
+                    })
+            })
+            .collect::<Vec<_>>();
+        if stale_tab_ids.is_empty() {
+            continue;
+        }
+        if let Err(error) = d.store.lock().plan_stale_runtime_tab_closes(
+            &topology,
+            active_run_tab_id.as_deref(),
+            &stale_tab_ids,
+        ) {
+            tracing::warn!(card_id = topology.card_id, error = %error, "reconciliation: duplicate tab cleanup blocked");
+        }
     }
 }
 
@@ -283,6 +402,7 @@ fn adopt_alive(
     let handle = RuntimeHandle {
         pane_id: current_run.herdr_pane_id.clone(),
         workspace_id: current_run.herdr_workspace_id.clone(),
+        tab_id: None,
         anchor_pane_id: current_run.herdr_anchor_pane_id.clone(),
         pid: None,
         herdr_socket: socket,

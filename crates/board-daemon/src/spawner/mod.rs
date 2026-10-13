@@ -92,6 +92,7 @@ pub struct HerdrLaunchPlan {
 pub struct RuntimeHandle {
     pub pane_id: Option<String>,
     pub workspace_id: Option<String>,
+    pub tab_id: Option<String>,
     /// Exact persistent card-tab shell anchor, when placement used one.
     pub anchor_pane_id: Option<String>,
     pub pid: Option<u32>,
@@ -114,6 +115,23 @@ pub trait Spawner: Send + Sync {
     fn spawn(&self, req: &HerdrLaunchPlan) -> Result<RuntimeHandle, SpawnError>;
     fn kill(&self, h: &RuntimeHandle) -> anyhow::Result<()>;
     fn is_alive(&self, h: &RuntimeHandle) -> anyhow::Result<bool>;
+    fn close_card_tab(
+        &self,
+        _socket: Option<&std::path::Path>,
+        _workspace_id: &str,
+        _tab_id: &str,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
+    fn rename_card_tab(
+        &self,
+        _socket: Option<&std::path::Path>,
+        _workspace_id: &str,
+        _tab_id: &str,
+        _label: &str,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
     /// The shared card-tab allocation registry, when this spawner places panes
     /// into Herdr card tabs. The `run.focus` rescue takes the same per-card lock
     /// through it, so a rescue and a dispatch cannot both create a `card-<id>`
